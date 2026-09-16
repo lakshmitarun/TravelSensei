@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import TravelSenseiLogo from "@/components/TravelSenseiLogo";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function Home() {
   const [destination, setDestination] = useState("Hyderabad, Telangana");
@@ -137,14 +141,9 @@ export default function Home() {
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-gutter items-center">
                 {/* Left Column: Vision & Primary Actions */}
                 <div className="lg:col-span-6 flex flex-col items-start gap-space-md text-white">
-                  <div className="inline-flex items-center gap-space-xs px-space-md py-1.5 rounded-full bg-primary/30 backdrop-blur-md shadow-sm border border-white/20">
-                    <span className="material-symbols-outlined text-primary-fixed text-[16px]">
-                      auto_awesome
-                    </span>
-                    <span className="font-label-sm text-label-sm text-primary-fixed uppercase tracking-wider">
-                      Next-Gen AI Travel Engine
-                    </span>
-                  </div>
+
+
+
                   <h1 className="font-display-lg-mobile lg:font-display-lg text-display-lg-mobile lg:text-display-lg text-white font-extrabold tracking-tight leading-[1.08]">
                     Travel Smarter.
                     <br />
@@ -652,14 +651,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="p-space-md rounded-xl bg-primary/10 flex items-start gap-space-sm">
-                      <span className="material-symbols-outlined text-primary text-[20px] mt-0.5">
-                        psychology
-                      </span>
-                      <p className="font-body-sm text-body-sm text-on-surface">
-                        <strong className="font-semibold text-primary">AI Insight:</strong> Recommended based on your demonstrated passion for Indo-Islamic architecture, relaxed morning pace, and target budget of ₹{budget.toLocaleString("en-IN")}.
-                      </p>
-                    </div>
+
                   </div>
                 </div>
               </div>
