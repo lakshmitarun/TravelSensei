@@ -2,8 +2,31 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TravelSensei - AI-Powered Personalized Travel Recommendation & Planning Platform",
-  description: "Discover destinations, build personalized itineraries, and plan your entire trip around your interests, dates, and budget — powered by state-of-the-art travel AI.",
+  title: "TravelSensei | AI-Powered Smart Travel Architect & Itinerary Planner",
+  description: "Plan seamless travel itineraries, explore curated destinations, compute smart budget allocations, and receive AI-driven recommendations tailored to your style.",
+  keywords: [
+    "TravelSensei",
+    "AI Travel Planner",
+    "Smart Travel Architecture",
+    "Personalized Itinerary",
+    "Budget Travel Optimizer",
+    "India Travel Guides",
+    "AI Recommendation Engine"
+  ],
+  authors: [{ name: "TravelSensei Team" }],
+  openGraph: {
+    title: "TravelSensei — Travel Smarter. Travel Your Way.",
+    description: "Discover destinations, build personalized itineraries, and plan your entire trip in under 30 seconds with next-gen travel AI.",
+    url: "https://travelsensei.com",
+    siteName: "TravelSensei",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "TravelSensei | AI Travel Architect",
+    description: "Discover destinations and build personalized travel itineraries with AI.",
+  },
 };
 
 export default function RootLayout({
