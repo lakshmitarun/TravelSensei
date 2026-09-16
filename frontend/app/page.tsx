@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function Home() {
+  const [activeNav, setActiveNav] = useState("home");
   const [destination, setDestination] = useState("Hyderabad, Telangana");
   const [budget, setBudget] = useState(25000);
   const [selectedStyles, setSelectedStyles] = useState<string[]>(["Relaxed"]);
@@ -63,37 +64,30 @@ export default function Home() {
               </span>
             )}
           </div>
-          <nav className="hidden lg:flex items-center gap-space-lg">
-            <a
-              className="transition-colors bg-primary-container text-on-primary font-label-lg text-label-lg rounded-full px-space-md py-space-xs"
-              href="#"
-            >
-              Home
-            </a>
-            <a
-              className="font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-colors"
-              href="#destinations"
-            >
-              Explore
-            </a>
-            <a
-              className="font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-colors"
-              href="#how-it-works"
-            >
-              How It Works
-            </a>
-            <a
-              className="font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-colors"
-              href="#suite"
-            >
-              Features
-            </a>
-            <a
-              className="font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface transition-colors"
-              href="#reviews"
-            >
-              Community
-            </a>
+          <nav className="hidden lg:flex items-center gap-2">
+            {[
+              { id: "home", label: "Home", href: "#" },
+              { id: "explore", label: "Explore", href: "#destinations" },
+              { id: "how-it-works", label: "How It Works", href: "#how-it-works" },
+              { id: "features", label: "Features", href: "#suite" },
+              { id: "community", label: "Community", href: "#reviews" },
+            ].map((item) => {
+              const isActive = activeNav === item.id;
+              return (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  onClick={() => setActiveNav(item.id)}
+                  className={`transition-all duration-200 font-label-lg text-label-lg px-4 py-1.5 rounded-full ${
+                    isActive
+                      ? "bg-primary-container text-on-primary font-semibold shadow-sm"
+                      : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container/60"
+                  }`}
+                >
+                  {item.label}
+                </a>
+              );
+            })}
           </nav>
           <div className="flex items-center gap-space-md">
             <a
