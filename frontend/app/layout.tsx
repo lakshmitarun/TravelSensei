@@ -27,6 +27,11 @@ export const metadata: Metadata = {
     title: "TravelSensei | AI Travel Architect",
     description: "Discover destinations and build personalized travel itineraries with AI.",
   },
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({

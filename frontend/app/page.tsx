@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import TravelSenseiLogo from "@/components/TravelSenseiLogo";
 
 export default function Home() {
   const [destination, setDestination] = useState("Hyderabad, Telangana");
@@ -50,12 +51,7 @@ export default function Home() {
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-20 max-w-[1440px] mx-auto px-margin flex items-center justify-between">
           <div className="flex items-center gap-space-md">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-on-primary font-bold text-xl shadow-md">
-              ⛩️
-            </div>
-            <span className="font-headline-sm text-headline-sm text-on-surface tracking-tight font-extrabold">
-              TravelSensei
-            </span>
+            <TravelSenseiLogo className="h-10" />
             {backendStatus && (
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -1332,9 +1328,9 @@ export default function Home() {
           {/* 10. FINAL CTA BANNER */}
           <section className="w-full pb-20 bg-surface">
             <div className="max-w-[1440px] mx-auto px-margin-mobile lg:px-margin">
-              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary-container to-secondary p-space-xl lg:p-20 text-white shadow-2xl flex flex-col items-center text-center gap-space-md">
+              <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary via-primary-container to-emerald-900 p-space-xl lg:p-20 text-white shadow-2xl flex flex-col items-center text-center gap-space-md border border-white/10">
                 <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
-                <div className="absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-secondary-container/20 blur-3xl pointer-events-none"></div>
+                <div className="absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-primary-fixed/20 blur-3xl pointer-events-none"></div>
                 <span className="relative z-10 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-white font-label-sm text-label-sm uppercase tracking-wider font-semibold">
                   Ready in 30 Seconds
                 </span>
@@ -1367,12 +1363,7 @@ export default function Home() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-gutter mb-space-xl">
             <div className="lg:col-span-2 flex flex-col gap-space-md">
               <div className="flex items-center gap-space-sm">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-on-primary font-bold text-lg">
-                  ⛩️
-                </div>
-                <span className="font-headline-sm text-headline-sm text-on-surface font-extrabold">
-                  TravelSensei
-                </span>
+                <TravelSenseiLogo className="h-9" />
               </div>
               <p className="font-body-md text-body-md text-on-surface-variant max-w-sm">
                 Your AI Travel Companion. Seamless multi-city journeys, bespoke local curation, and predictive itinerary logistics at your fingertips.
