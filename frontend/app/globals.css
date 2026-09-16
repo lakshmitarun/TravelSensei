@@ -1,0 +1,168 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Colors */
+  --color-on-background: #131b2e;
+  --color-on-error: #ffffff;
+  --color-tertiary-container: #007bb9;
+  --color-on-primary-fixed: #00201d;
+  --color-secondary-fixed-dim: #ffb3b0;
+  --color-error-container: #ffdad6;
+  --color-on-surface: #131b2e;
+  --color-on-primary-container: #f4fffc;
+  --color-on-secondary-fixed: #410007;
+  --color-on-tertiary-fixed: #001d31;
+  --color-inverse-primary: #6bd8cb;
+  --color-tertiary: #006194;
+  --color-surface-container-highest: #dae2fd;
+  --color-on-tertiary-fixed-variant: #004b73;
+  --color-surface-bright: #faf8ff;
+  --color-surface-container-high: #e2e7ff;
+  --color-primary-fixed: #89f5e7;
+  --color-on-tertiary-container: #fdfcff;
+  --color-surface-variant: #dae2fd;
+  --color-on-primary: #ffffff;
+  --color-on-surface-variant: #3d4947;
+  --color-surface-dim: #d2d9f4;
+  --color-primary-container: #008378;
+  --color-surface: #faf8ff;
+  --color-surface-container: #eaedff;
+  --color-primary-fixed-dim: #6bd8cb;
+  --color-surface-tint: #006a61;
+  --color-tertiary-fixed-dim: #93ccff;
+  --color-on-secondary-container: #60000e;
+  --color-on-tertiary: #ffffff;
+  --color-on-secondary-fixed-variant: #92001b;
+  --color-secondary-container: #ff5a5f;
+  --color-inverse-surface: #283044;
+  --color-surface-container-lowest: #ffffff;
+  --color-on-error-container: #93000a;
+  --color-on-secondary: #ffffff;
+  --color-background: #faf8ff;
+  --color-outline-variant: #bcc9c6;
+  --color-inverse-on-surface: #eef0ff;
+  --color-secondary: #b52330;
+  --color-error: #ba1a1a;
+  --color-secondary-fixed: #ffdad8;
+  --color-tertiary-fixed: #cce5ff;
+  --color-primary: #00685f;
+  --color-surface-container-low: #f2f3ff;
+  --color-on-primary-fixed-variant: #005049;
+  --color-outline: #6d7a77;
+
+  /* Spacing */
+  --spacing-margin: 3rem;
+  --spacing-space-xl: 2.5rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-xs: 0.25rem;
+  --spacing-gutter-mobile: 1rem;
+  --spacing-space-md: 1rem;
+  --spacing-gutter: 1.5rem;
+  --spacing-margin-mobile: 1rem;
+}
+
+/* Custom utility typography classes */
+.font-display-lg {
+  font-size: 3.5rem;
+  line-height: 4rem;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.font-display-lg-mobile {
+  font-size: 2.25rem;
+  line-height: 2.75rem;
+  letter-spacing: -0.025em;
+  font-weight: 800;
+}
+
+.font-headline-xl {
+  font-size: 2.25rem;
+  line-height: 2.75rem;
+  letter-spacing: -0.025em;
+  font-weight: 700;
+}
+
+.font-headline-xl-mobile {
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.font-headline-lg {
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+
+.font-headline-md {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+.font-headline-sm {
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.font-body-lg {
+  font-size: 1.125rem;
+  line-height: 1.75rem;
+  letter-spacing: -0.005em;
+  font-weight: 400;
+}
+
+.font-body-md {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  letter-spacing: 0em;
+  font-weight: 400;
+}
+
+.font-body-sm {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  letter-spacing: 0.005em;
+  font-weight: 400;
+}
+
+.font-label-lg {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+}
+
+.font-label-md {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.025em;
+  font-weight: 600;
+}
+
+.font-label-sm {
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  scroll-behavior: smooth;
+}
+
+::-webkit-scrollbar {
+  display: none;
+}
+
