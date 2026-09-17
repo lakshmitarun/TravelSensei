@@ -1,24 +1,42 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { format } from "date-fns";
 import TravelSenseiLogo from "@/components/TravelSenseiLogo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Slider } from "@/components/ui/slider";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState("home");
   const [destination, setDestination] = useState("Hyderabad, Telangana");
+  const [travelDate, setTravelDate] = useState<Date | undefined>(new Date());
   const [budget, setBudget] = useState(25000);
-  const [selectedStyles, setSelectedStyles] = useState<string[]>(["Relaxed"]);
+  const [selectedStyle, setSelectedStyle] = useState<string>("Relaxed");
   const [backendStatus, setBackendStatus] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationMsg, setGenerationMsg] = useState("");
+  const [apiResponse, setApiResponse] = useState<{
+    status: string;
+    message: string;
+    data?: {
+      destination: string;
+      travel_date: string;
+      budget: number;
+      travel_style: string;
+    };
+  } | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
     // Attempt to ping local Flask backend health check endpoint
-    fetch("http://127.0.0.1:5000/api/health")
+    fetch(`${API_BASE_URL}/api/health`)
       .then((res) => res.json())
       .then((data) => {
         if (data && data.message) {
@@ -30,24 +48,90 @@ export default function Home() {
       });
   }, []);
 
-  const handleStyleToggle = (style: string) => {
-    if (selectedStyles.includes(style)) {
-      setSelectedStyles(selectedStyles.filter((s) => s !== style));
-    } else {
-      setSelectedStyles([...selectedStyles, style]);
+  interface FormErrors {
+    destination?: string;
+    travelDate?: string;
+    budget?: string;
+    travelStyle?: string;
+  }
+
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+
+    // 1. Destination validation
+    if (!destination || destination.trim() === "") {
+      newErrors.destination = "Please enter a travel destination.";
     }
+
+    // 2. Travel Date validation
+    const today = new Date(new Date().setHours(0, 0, 0, 0));
+    if (!travelDate) {
+      newErrors.travelDate = "Please select a travel date.";
+    } else if (travelDate < today) {
+      newErrors.travelDate = "Travel date cannot be in the past.";
+    }
+
+    // 3. Budget validation
+    if (!budget || budget < 5000 || budget > 100000) {
+      newErrors.budget = "Budget must be between ₹5,000 and ₹1,00,000.";
+    }
+
+    // 4. Travel Style validation
+    if (!selectedStyle || selectedStyle.trim() === "") {
+      newErrors.travelStyle = "Please select a travel style.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
-  const handleGenerateTrip = () => {
+  const handleGenerateTrip = async () => {
+    setApiResponse(null);
+    setApiError(null);
+
+    const isValid = validateForm();
+    if (!isValid) return;
+
     setIsGenerating(true);
-    setGenerationMsg(`Architecting your personalized trip to ${destination} with budget ₹${budget.toLocaleString("en-IN")}...`);
-    setTimeout(() => {
-      setIsGenerating(false);
-      const targetEl = document.getElementById("recommendations");
-      if (targetEl) {
-        targetEl.scrollIntoView({ behavior: "smooth" });
+
+    try {
+      const formattedDate = travelDate ? format(travelDate, "yyyy-MM-dd") : "";
+      const payload = {
+        destination: destination.trim(),
+        travel_date: formattedDate,
+        budget: Number(budget),
+        travel_style: selectedStyle,
+      };
+
+      const response = await fetch(`${API_BASE_URL}/api/trips/plan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const resData = await response.json();
+
+      if (!response.ok || resData.status !== "success") {
+        throw new Error(resData.message || "Failed to receive trip preferences from backend.");
       }
-    }, 1500);
+
+      setApiResponse(resData);
+
+      setTimeout(() => {
+        const targetEl = document.getElementById("recommendations");
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth" });
+        }
+      }, 500);
+    } catch (err: any) {
+      setApiError(err.message || "Unable to connect to Flask backend server.");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -230,17 +314,29 @@ export default function Home() {
                         Where do you want to go?
                       </label>
                       <div className="relative flex items-center">
-                        <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px]">
+                        <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px] pointer-events-none z-10">
                           location_on
                         </span>
-                        <input
-                          className="w-full pl-11 pr-4 py-3 bg-surface-container-low rounded-xl text-on-surface font-body-md focus:bg-surface focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
-                          placeholder="Search destination..."
+                        <Input
                           type="text"
+                          placeholder="Search destination..."
                           value={destination}
-                          onChange={(e) => setDestination(e.target.value)}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setDestination(e.target.value);
+                            if (errors.destination) setErrors((prev) => ({ ...prev, destination: undefined }));
+                          }}
+                          className={`pl-11 pr-4 py-3 bg-surface-container-low rounded-xl text-on-surface font-body-md focus:bg-surface shadow-sm ${
+                            errors.destination ? "border-2 border-red-500/80 focus:ring-red-500" : ""
+                          }`}
+                          aria-invalid={!!errors.destination}
                         />
                       </div>
+                      {errors.destination && (
+                        <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {errors.destination}
+                        </p>
+                      )}
                       <div className="flex items-center gap-1.5 pt-1 overflow-x-auto">
                         <span className="text-[11px] text-on-surface-variant font-medium uppercase tracking-wider">
                           Quick:
@@ -248,13 +344,16 @@ export default function Home() {
                         {["Goa", "Manali", "Jaipur", "Kerala", "Hyderabad"].map((place) => (
                           <button
                             key={place}
-                            className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
-                              destination.includes(place)
-                                ? "bg-primary text-on-primary font-bold"
+                            className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium ${
+                              destination.toLowerCase().includes(place.toLowerCase())
+                                ? "bg-primary text-on-primary font-bold shadow-xs"
                                 : "bg-surface-container hover:bg-surface-container-high text-on-surface"
                             }`}
                             type="button"
-                            onClick={() => setDestination(`${place}, India`)}
+                            onClick={() => {
+                              setDestination(place);
+                              if (errors.destination) setErrors((prev) => ({ ...prev, destination: undefined }));
+                            }}
                           >
                             {place}
                           </button>
@@ -268,16 +367,40 @@ export default function Home() {
                         <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
                           When are you travelling?
                         </label>
-                        <div className="relative flex items-center">
-                          <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px]">
-                            calendar_month
-                          </span>
-                          <input
-                            className="w-full pl-11 pr-4 py-3 bg-surface-container-low rounded-xl text-on-surface font-body-md focus:bg-surface focus:outline-none shadow-sm"
-                            type="text"
-                            defaultValue="Oct 18 – Oct 22"
-                          />
-                        </div>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button
+                              type="button"
+                              className={`w-full text-left pl-11 pr-4 py-3 bg-surface-container-low hover:bg-surface-container rounded-xl text-on-surface font-body-md focus:bg-surface focus:outline-none shadow-sm relative flex items-center transition-colors group cursor-pointer ${
+                                errors.travelDate ? "border-2 border-red-500/80" : ""
+                              }`}
+                            >
+                              <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px] transition-transform group-hover:scale-110">
+                                calendar_month
+                              </span>
+                              <span className="truncate">
+                                {travelDate ? format(travelDate, "MMM dd, yyyy") : "Select travel date"}
+                              </span>
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0 border border-surface-container-high bg-surface-container-lowest shadow-2xl rounded-2xl" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={travelDate}
+                              onSelect={(d) => {
+                                setTravelDate(d);
+                                if (errors.travelDate) setErrors((prev) => ({ ...prev, travelDate: undefined }));
+                              }}
+                              disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        {errors.travelDate && (
+                          <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
+                            <span className="material-symbols-outlined text-[14px]">error</span>
+                            {errors.travelDate}
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-col gap-1.5">
                         <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
@@ -298,7 +421,7 @@ export default function Home() {
                     </div>
 
                     {/* Budget Slider */}
-                    <div className="flex flex-col gap-2 bg-surface-container-low/60 p-space-md rounded-xl">
+                    <div className={`flex flex-col gap-3 bg-surface-container-low/60 p-space-md rounded-xl ${errors.budget ? "border-2 border-red-500/80" : ""}`}>
                       <div className="flex items-center justify-between">
                         <span className="font-label-sm text-label-sm text-on-surface-variant font-medium">
                           What's your estimated budget?
@@ -307,20 +430,28 @@ export default function Home() {
                           ₹{budget.toLocaleString("en-IN")}
                         </span>
                       </div>
-                      <input
-                        className="w-full accent-primary h-2 bg-surface-container rounded-lg cursor-pointer"
+                      <Slider
+                        value={[budget]}
+                        onValueChange={(values) => {
+                          setBudget(values[0]);
+                          if (errors.budget) setErrors((prev) => ({ ...prev, budget: undefined }));
+                        }}
+                        min={5000}
                         max={100000}
-                        min={10000}
-                        step={5000}
-                        type="range"
-                        value={budget}
-                        onChange={(e) => setBudget(Number(e.target.value))}
+                        step={2500}
+                        className="my-1"
                       />
                       <div className="flex justify-between text-[11px] text-on-surface-variant font-medium">
-                        <span>₹10,000 (Backpacker)</span>
+                        <span>₹5,000 (Backpacker)</span>
                         <span>₹50,000 (Comfort)</span>
                         <span>₹1,00,000+ (Luxury)</span>
                       </div>
+                      {errors.budget && (
+                        <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {errors.budget}
+                        </p>
+                      )}
                     </div>
 
                     {/* Travel Style Pills */}
@@ -328,19 +459,24 @@ export default function Home() {
                       <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
                         Travel Style
                       </label>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Travel Style">
                         {["Adventure", "Relaxed", "Family", "Luxury", "Backpacking"].map((style) => {
-                          const isSelected = selectedStyles.includes(style);
+                          const isSelected = selectedStyle === style;
                           return (
                             <button
                               key={style}
-                              className={`px-3.5 py-1.5 rounded-full font-label-sm text-label-sm transition-all flex items-center gap-1 ${
+                              type="button"
+                              role="radio"
+                              aria-checked={isSelected}
+                              className={`px-3.5 py-1.5 rounded-full font-label-sm text-label-sm transition-all flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                                 isSelected
-                                  ? "bg-primary text-on-primary shadow-sm font-semibold"
+                                  ? "bg-primary text-on-primary shadow-sm font-semibold scale-105"
                                   : "bg-surface-container hover:bg-surface-container-high text-on-surface"
                               }`}
-                              type="button"
-                              onClick={() => handleStyleToggle(style)}
+                              onClick={() => {
+                                setSelectedStyle(style);
+                                if (errors.travelStyle) setErrors((prev) => ({ ...prev, travelStyle: undefined }));
+                              }}
                             >
                               <span>{style}</span>
                               {isSelected && (
@@ -352,7 +488,39 @@ export default function Home() {
                           );
                         })}
                       </div>
+                      {errors.travelStyle && (
+                        <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {errors.travelStyle}
+                        </p>
+                      )}
                     </div>
+
+                    {/* API Success Indicator */}
+                    {apiResponse && (
+                      <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-col gap-2 text-emerald-950 text-xs shadow-xs animate-in fade-in-50">
+                        <div className="flex items-center gap-2 font-bold text-sm text-emerald-800">
+                          <span className="material-symbols-outlined text-emerald-600 text-lg">check_circle</span>
+                          <span>{apiResponse.message}</span>
+                        </div>
+                        {apiResponse.data && (
+                          <div className="text-[11px] text-emerald-800 bg-emerald-100/70 p-2.5 rounded-lg font-mono flex flex-col gap-0.5 border border-emerald-200">
+                            <p>📍 Destination: {apiResponse.data.destination}</p>
+                            <p>📅 Date: {apiResponse.data.travel_date}</p>
+                            <p>💰 Budget: ₹{apiResponse.data.budget.toLocaleString("en-IN")}</p>
+                            <p>🎒 Style: {apiResponse.data.travel_style}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* API Error Indicator */}
+                    {apiError && (
+                      <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl flex items-center gap-2 text-rose-900 text-xs font-semibold shadow-xs animate-in fade-in-50">
+                        <span className="material-symbols-outlined text-rose-600 text-lg">error</span>
+                        <span>{apiError}</span>
+                      </div>
+                    )}
 
                     {/* Submit CTA */}
                     <button
