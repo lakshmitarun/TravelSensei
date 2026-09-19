@@ -1,156 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import Link from "next/link";
 import TravelSenseiLogo from "@/components/TravelSenseiLogo";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
-import { Slider } from "@/components/ui/slider";
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+import { TravelPlanner } from "@/components/travel-planner";
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState("home");
-  const [destination, setDestination] = useState("Hyderabad, Telangana");
-  const [travelDate, setTravelDate] = useState<Date | undefined>(new Date());
-  const [budget, setBudget] = useState(25000);
-  const [selectedStyle, setSelectedStyle] = useState<string>("Relaxed");
-  const [backendStatus, setBackendStatus] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationMsg, setGenerationMsg] = useState("");
-  const [apiResponse, setApiResponse] = useState<{
-    status: string;
-    message: string;
-    data?: {
-      destination: string;
-      travel_date: string;
-      budget: number;
-      travel_style: string;
-    };
-  } | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Attempt to ping local Flask backend health check endpoint
-    fetch(`${API_BASE_URL}/api/health`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.message) {
-          setBackendStatus(data.message);
-        }
-      })
-      .catch(() => {
-        setBackendStatus(null);
-      });
-  }, []);
-
-  interface FormErrors {
-    destination?: string;
-    travelDate?: string;
-    budget?: string;
-    travelStyle?: string;
-  }
-
-  const [errors, setErrors] = useState<FormErrors>({});
-
-  const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
-
-    // 1. Destination validation
-    if (!destination || destination.trim() === "") {
-      newErrors.destination = "Please enter a travel destination.";
-    }
-
-    // 2. Travel Date validation
-    const today = new Date(new Date().setHours(0, 0, 0, 0));
-    if (!travelDate) {
-      newErrors.travelDate = "Please select a travel date.";
-    } else if (travelDate < today) {
-      newErrors.travelDate = "Travel date cannot be in the past.";
-    }
-
-    // 3. Budget validation
-    if (!budget || budget < 5000 || budget > 100000) {
-      newErrors.budget = "Budget must be between ₹5,000 and ₹1,00,000.";
-    }
-
-    // 4. Travel Style validation
-    if (!selectedStyle || selectedStyle.trim() === "") {
-      newErrors.travelStyle = "Please select a travel style.";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleGenerateTrip = async () => {
-    setApiResponse(null);
-    setApiError(null);
-
-    const isValid = validateForm();
-    if (!isValid) return;
-
-    setIsGenerating(true);
-
-    try {
-      const formattedDate = travelDate ? format(travelDate, "yyyy-MM-dd") : "";
-      const payload = {
-        destination: destination.trim(),
-        travel_date: formattedDate,
-        budget: Number(budget),
-        travel_style: selectedStyle,
-      };
-
-      const response = await fetch(`${API_BASE_URL}/api/trips/plan`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const resData = await response.json();
-
-      if (!response.ok || resData.status !== "success") {
-        throw new Error(resData.message || "Failed to receive trip preferences from backend.");
-      }
-
-      setApiResponse(resData);
-
-      setTimeout(() => {
-        const targetEl = document.getElementById("recommendations");
-        if (targetEl) {
-          targetEl.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 500);
-    } catch (err: any) {
-      setApiError(err.message || "Unable to connect to Flask backend server.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   return (
     <div className="bg-surface font-body-md text-body-md text-on-surface antialiased min-h-screen flex flex-col">
       {/* HEADER NAVBAR */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/85 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="h-20 max-w-[1440px] mx-auto px-margin flex items-center justify-between">
-          <div className="flex items-center gap-space-md">
-            <TravelSenseiLogo className="h-10" />
-            {backendStatus && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-semibold">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                Backend Ready
-              </span>
-            )}
-          </div>
-          <nav className="hidden lg:flex items-center gap-2">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-surface/90 backdrop-blur-md border-b border-surface-container-high/40 shadow-xs">
+        <div className="h-[72px] max-w-[1440px] mx-auto px-margin-mobile lg:px-margin flex items-center justify-between">
+          {/* LEFT: Brand Logo */}
+          <Link href="/" className="inline-flex items-center hover:opacity-95 transition-opacity">
+            <TravelSenseiLogo className="h-9 sm:h-9.5" />
+          </Link>
+
+          {/* CENTER: Navigation Links */}
+          <nav className="hidden lg:flex items-center gap-7">
             {[
               { id: "home", label: "Home", href: "#" },
+              { id: "my-trips", label: "My Trips", href: "/my-trips" },
               { id: "explore", label: "Explore", href: "#destinations" },
               { id: "how-it-works", label: "How It Works", href: "#how-it-works" },
               { id: "features", label: "Features", href: "#suite" },
@@ -162,26 +35,25 @@ export default function Home() {
                   key={item.id}
                   href={item.href}
                   onClick={() => setActiveNav(item.id)}
-                  className={`transition-all duration-200 font-label-lg text-label-lg px-4 py-1.5 rounded-full ${
+                  className={`transition-colors duration-200 text-[15px] font-medium py-1 relative ${
                     isActive
-                      ? "bg-primary-container text-on-primary font-semibold shadow-sm"
-                      : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container/60"
+                      ? "text-primary font-semibold"
+                      : "text-on-surface-variant hover:text-on-surface"
                   }`}
                 >
                   {item.label}
+                  {isActive && (
+                    <span className="absolute bottom-[-2px] left-0 right-0 h-[2px] bg-primary rounded-full" />
+                  )}
                 </a>
               );
             })}
           </nav>
-          <div className="flex items-center gap-space-md">
+
+          {/* RIGHT: Actions */}
+          <div className="flex items-center gap-3">
             <a
-              className="font-label-lg text-label-lg text-on-surface-variant hover:text-on-surface px-space-sm py-space-xs transition-colors"
-              href="#login"
-            >
-              Login
-            </a>
-            <a
-              className="bg-primary hover:bg-primary-container text-on-primary font-label-lg text-label-lg px-space-lg py-space-sm rounded-xl shadow-[0_4px_12px_rgba(0,104,95,0.2)] transition-all flex items-center gap-space-xs"
+              className="h-[46px] px-5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-semibold text-[15px] shadow-sm hover:shadow transition-all flex items-center gap-1.5"
               href="#planner"
             >
               <span>Start Planning</span>
@@ -189,20 +61,65 @@ export default function Home() {
                 arrow_forward
               </span>
             </a>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <span className="material-symbols-outlined text-on-primary text-[18px]">
+            <Link
+              href="/my-trips"
+              className="w-[42px] h-[42px] rounded-full bg-surface-container hover:bg-primary/10 text-primary border border-surface-container-high flex items-center justify-center cursor-pointer transition-colors"
+              title="My Trips & Account"
+            >
+              <span className="material-symbols-outlined text-[20px]">
                 person
               </span>
-            </div>
+            </Link>
+            {/* Mobile Menu Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden w-[42px] h-[42px] rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface flex items-center justify-center transition-colors"
+              aria-label="Toggle Navigation Menu"
+            >
+              <span className="material-symbols-outlined text-[22px]">
+                {isMobileMenuOpen ? "close" : "menu"}
+              </span>
+            </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Drawer */}
+        {isMobileMenuOpen && (
+          <div className="lg:hidden border-t border-surface-container-high/40 bg-surface/98 backdrop-blur-2xl px-6 py-4 flex flex-col gap-2 shadow-lg">
+            {[
+              { id: "home", label: "Home", href: "#" },
+              { id: "my-trips", label: "My Trips", href: "/my-trips" },
+              { id: "explore", label: "Explore", href: "#destinations" },
+              { id: "how-it-works", label: "How It Works", href: "#how-it-works" },
+              { id: "features", label: "Features", href: "#suite" },
+              { id: "community", label: "Community", href: "#reviews" },
+            ].map((item) => (
+              <a
+                key={item.id}
+                href={item.href}
+                onClick={() => {
+                  setActiveNav(item.id);
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                  activeNav === item.id
+                    ? "bg-primary/10 text-primary font-semibold"
+                    : "text-on-surface-variant hover:text-on-surface hover:bg-surface-container"
+                }`}
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+        )}
       </header>
 
       {/* MAIN CONTENT CONTAINER */}
-      <main className="w-full pt-20 flex-1 bg-surface">
+      <main className="w-full pt-[72px] flex-1 bg-surface">
         <div className="flex flex-col w-full">
           {/* 1. HERO SECTION */}
-          <section className="relative w-full overflow-hidden -mt-20 pt-24 pb-20 lg:pb-32 bg-surface">
+          <section className="relative w-full overflow-hidden -mt-[72px] pt-24 pb-20 lg:pb-32 bg-surface">
             {/* Full Bleed Atmospheric Backdrop */}
             <div className="absolute inset-0 z-0">
               <img
@@ -295,259 +212,7 @@ export default function Home() {
 
                 {/* Right Column: Interactive Trip Planner Card */}
                 <div className="lg:col-span-6 w-full mt-space-lg lg:mt-0" id="planner">
-                  <div className="bg-surface/95 backdrop-blur-2xl rounded-2xl p-space-lg lg:p-space-xl shadow-2xl flex flex-col gap-space-md border border-white/40">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-space-xs">
-                        <span className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse"></span>
-                        <span className="font-label-md text-label-md text-on-surface font-semibold tracking-wide uppercase">
-                          AI Trip Architect
-                        </span>
-                      </div>
-                      <span className="font-label-sm text-label-sm px-2.5 py-1 rounded-full bg-primary-fixed text-on-primary-fixed font-bold">
-                        Instant Setup
-                      </span>
-                    </div>
-
-                    {/* Destination Input */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                        Where do you want to go?
-                      </label>
-                      <div className="relative flex items-center">
-                        <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px] pointer-events-none z-10">
-                          location_on
-                        </span>
-                        <Input
-                          type="text"
-                          placeholder="Search destination..."
-                          value={destination}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            setDestination(e.target.value);
-                            if (errors.destination) setErrors((prev) => ({ ...prev, destination: undefined }));
-                          }}
-                          className={`pl-11 pr-4 py-3 bg-surface-container-low rounded-xl text-on-surface font-body-md focus:bg-surface shadow-sm ${
-                            errors.destination ? "border-2 border-red-500/80 focus:ring-red-500" : ""
-                          }`}
-                          aria-invalid={!!errors.destination}
-                        />
-                      </div>
-                      {errors.destination && (
-                        <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
-                          <span className="material-symbols-outlined text-[14px]">error</span>
-                          {errors.destination}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-1.5 pt-1 overflow-x-auto">
-                        <span className="text-[11px] text-on-surface-variant font-medium uppercase tracking-wider">
-                          Quick:
-                        </span>
-                        {["Goa", "Manali", "Jaipur", "Kerala", "Hyderabad"].map((place) => (
-                          <button
-                            key={place}
-                            className={`text-[11px] px-2.5 py-1 rounded-md transition-all font-medium ${
-                              destination.toLowerCase().includes(place.toLowerCase())
-                                ? "bg-primary text-on-primary font-bold shadow-xs"
-                                : "bg-surface-container hover:bg-surface-container-high text-on-surface"
-                            }`}
-                            type="button"
-                            onClick={() => {
-                              setDestination(place);
-                              if (errors.destination) setErrors((prev) => ({ ...prev, destination: undefined }));
-                            }}
-                          >
-                            {place}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Dates Input */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
-                      <div className="flex flex-col gap-1.5">
-                        <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                          When are you travelling?
-                        </label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <button
-                              type="button"
-                              className={`w-full text-left pl-11 pr-4 py-3 bg-surface-container-low hover:bg-surface-container rounded-xl text-on-surface font-body-md focus:bg-surface focus:outline-none shadow-sm relative flex items-center transition-colors group cursor-pointer ${
-                                errors.travelDate ? "border-2 border-red-500/80" : ""
-                              }`}
-                            >
-                              <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px] transition-transform group-hover:scale-110">
-                                calendar_month
-                              </span>
-                              <span className="truncate">
-                                {travelDate ? format(travelDate, "MMM dd, yyyy") : "Select travel date"}
-                              </span>
-                            </button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0 border border-surface-container-high bg-surface-container-lowest shadow-2xl rounded-2xl" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={travelDate}
-                              onSelect={(d) => {
-                                setTravelDate(d);
-                                if (errors.travelDate) setErrors((prev) => ({ ...prev, travelDate: undefined }));
-                              }}
-                              disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        {errors.travelDate && (
-                          <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
-                            <span className="material-symbols-outlined text-[14px]">error</span>
-                            {errors.travelDate}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                          Duration & Pace
-                        </label>
-                        <div className="relative flex items-center">
-                          <span className="material-symbols-outlined absolute left-3.5 text-primary text-[20px]">
-                            schedule
-                          </span>
-                          <input
-                            className="w-full pl-11 pr-4 py-3 bg-surface-container-low rounded-xl text-on-surface font-body-md"
-                            readOnly
-                            type="text"
-                            value="5 Days • Moderate Pace"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Budget Slider */}
-                    <div className={`flex flex-col gap-3 bg-surface-container-low/60 p-space-md rounded-xl ${errors.budget ? "border-2 border-red-500/80" : ""}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                          What's your estimated budget?
-                        </span>
-                        <span className="font-label-lg text-label-lg text-primary font-bold">
-                          ₹{budget.toLocaleString("en-IN")}
-                        </span>
-                      </div>
-                      <Slider
-                        value={[budget]}
-                        onValueChange={(values) => {
-                          setBudget(values[0]);
-                          if (errors.budget) setErrors((prev) => ({ ...prev, budget: undefined }));
-                        }}
-                        min={5000}
-                        max={100000}
-                        step={2500}
-                        className="my-1"
-                      />
-                      <div className="flex justify-between text-[11px] text-on-surface-variant font-medium">
-                        <span>₹5,000 (Backpacker)</span>
-                        <span>₹50,000 (Comfort)</span>
-                        <span>₹1,00,000+ (Luxury)</span>
-                      </div>
-                      {errors.budget && (
-                        <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
-                          <span className="material-symbols-outlined text-[14px]">error</span>
-                          {errors.budget}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Travel Style Pills */}
-                    <div className="flex flex-col gap-1.5">
-                      <label className="font-label-sm text-label-sm text-on-surface-variant font-medium">
-                        Travel Style
-                      </label>
-                      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Travel Style">
-                        {["Adventure", "Relaxed", "Family", "Luxury", "Backpacking"].map((style) => {
-                          const isSelected = selectedStyle === style;
-                          return (
-                            <button
-                              key={style}
-                              type="button"
-                              role="radio"
-                              aria-checked={isSelected}
-                              className={`px-3.5 py-1.5 rounded-full font-label-sm text-label-sm transition-all flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                                isSelected
-                                  ? "bg-primary text-on-primary shadow-sm font-semibold scale-105"
-                                  : "bg-surface-container hover:bg-surface-container-high text-on-surface"
-                              }`}
-                              onClick={() => {
-                                setSelectedStyle(style);
-                                if (errors.travelStyle) setErrors((prev) => ({ ...prev, travelStyle: undefined }));
-                              }}
-                            >
-                              <span>{style}</span>
-                              {isSelected && (
-                                <span className="material-symbols-outlined text-[14px]">
-                                  check
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {errors.travelStyle && (
-                        <p className="text-red-600 text-xs font-medium flex items-center gap-1 mt-0.5">
-                          <span className="material-symbols-outlined text-[14px]">error</span>
-                          {errors.travelStyle}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* API Success Indicator */}
-                    {apiResponse && (
-                      <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl flex flex-col gap-2 text-emerald-950 text-xs shadow-xs animate-in fade-in-50">
-                        <div className="flex items-center gap-2 font-bold text-sm text-emerald-800">
-                          <span className="material-symbols-outlined text-emerald-600 text-lg">check_circle</span>
-                          <span>{apiResponse.message}</span>
-                        </div>
-                        {apiResponse.data && (
-                          <div className="text-[11px] text-emerald-800 bg-emerald-100/70 p-2.5 rounded-lg font-mono flex flex-col gap-0.5 border border-emerald-200">
-                            <p>📍 Destination: {apiResponse.data.destination}</p>
-                            <p>📅 Date: {apiResponse.data.travel_date}</p>
-                            <p>💰 Budget: ₹{apiResponse.data.budget.toLocaleString("en-IN")}</p>
-                            <p>🎒 Style: {apiResponse.data.travel_style}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* API Error Indicator */}
-                    {apiError && (
-                      <div className="p-3.5 bg-rose-50 border border-rose-300 rounded-xl flex items-center gap-2 text-rose-900 text-xs font-semibold shadow-xs animate-in fade-in-50">
-                        <span className="material-symbols-outlined text-rose-600 text-lg">error</span>
-                        <span>{apiError}</span>
-                      </div>
-                    )}
-
-                    {/* Submit CTA */}
-                    <button
-                      className="w-full py-4 rounded-xl bg-secondary-container hover:bg-secondary text-white font-headline-sm text-headline-sm shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-space-xs mt-1"
-                      type="button"
-                      onClick={handleGenerateTrip}
-                      disabled={isGenerating}
-                    >
-                      {isGenerating ? (
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                          <span>Creating Itinerary...</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span>Generate My Trip</span>
-                          <span className="text-xl">🪄</span>
-                        </>
-                      )}
-                    </button>
-
-                    {generationMsg && (
-                      <div className="p-3 rounded-xl bg-primary-fixed/30 text-on-primary-fixed text-xs font-semibold text-center animate-fade-in">
-                        {generationMsg}
-                      </div>
-                    )}
-                  </div>
+                  <TravelPlanner />
                 </div>
               </div>
             </div>
@@ -708,7 +373,7 @@ export default function Home() {
                       <div className="flex items-center gap-space-sm">
                         <div className="w-3 h-3 rounded-full bg-primary animate-ping"></div>
                         <span className="font-label-lg text-label-lg text-on-surface font-bold">
-                          Live Simulation: {destination} • 5 Days
+                          Live Simulation: Kyoto, Japan • 5 Days
                         </span>
                       </div>
                       <span className="px-3 py-1 rounded-full bg-primary-fixed text-on-primary-fixed font-label-sm text-label-sm font-bold flex items-center gap-1">
@@ -975,7 +640,7 @@ export default function Home() {
                       Target Budget
                     </span>
                     <span className="font-headline-xl text-headline-xl font-extrabold text-on-surface">
-                      ₹{budget.toLocaleString("en-IN")}
+                      ₹30,000
                     </span>
                     <span className="text-xs text-on-surface-variant">
                       Set ceiling for 5-Day getaway
@@ -986,7 +651,7 @@ export default function Home() {
                       Estimated Cost
                     </span>
                     <span className="font-headline-xl text-headline-xl font-extrabold text-primary">
-                      ₹{Math.round(budget * 0.78).toLocaleString("en-IN")}
+                      ₹23,400
                     </span>
                     <span className="text-xs text-primary font-medium">
                       All transit, stay & dining included
@@ -997,7 +662,7 @@ export default function Home() {
                       Contingency Buffer
                     </span>
                     <span className="font-headline-xl text-headline-xl font-extrabold text-tertiary">
-                      ₹{Math.round(budget * 0.22).toLocaleString("en-IN")}
+                      ₹6,600
                     </span>
                     <span className="text-xs text-on-surface-variant">
                       Surplus reserve for souvenirs & emergencies
@@ -1122,10 +787,9 @@ export default function Home() {
                     <div className="pt-space-sm border-t border-surface-container flex items-center justify-between">
                       <span className="text-xs font-medium text-on-surface-variant">From ₹12,000 / person</span>
                       <button
-                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1"
+                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setDestination("Hyderabad, Telangana");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          document.getElementById("planner")?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         <span>Explore Itineraries</span>
@@ -1161,10 +825,9 @@ export default function Home() {
                     <div className="pt-space-sm border-t border-surface-container flex items-center justify-between">
                       <span className="text-xs font-medium text-on-surface-variant">From ₹15,000 / person</span>
                       <button
-                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1"
+                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setDestination("Goa, India");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          document.getElementById("planner")?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         <span>Explore Itineraries</span>
@@ -1200,10 +863,9 @@ export default function Home() {
                     <div className="pt-space-sm border-t border-surface-container flex items-center justify-between">
                       <span className="text-xs font-medium text-on-surface-variant">From ₹14,000 / person</span>
                       <button
-                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1"
+                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setDestination("Jaipur, Rajasthan");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          document.getElementById("planner")?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         <span>Explore Itineraries</span>
@@ -1225,24 +887,23 @@ export default function Home() {
                       <span className="text-amber-400">★</span> 4.8
                     </div>
                     <div className="absolute bottom-3 left-3 flex gap-1.5">
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/80 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold">Mountains</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-white/80 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold">Adventure</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/80 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold">Alpine</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-white/80 backdrop-blur-md text-on-surface font-label-sm text-label-sm font-semibold">Snow</span>
                     </div>
                   </div>
                   <div className="p-space-lg flex flex-col gap-space-sm flex-1 justify-between">
                     <div>
                       <h3 className="font-headline-md text-headline-md text-on-surface font-bold">Manali</h3>
                       <p className="font-body-sm text-body-sm text-on-surface-variant pt-1">
-                        Snowy Himalayan peaks, deep cedar forest valleys, high altitude mountain passes, apple orchards, and river rafting.
+                        Towering Himalayan snow peaks, Solang Valley adventure circuits, cedar forests, and cozy mountain cafe retreats.
                       </p>
                     </div>
                     <div className="pt-space-sm border-t border-surface-container flex items-center justify-between">
-                      <span className="text-xs font-medium text-on-surface-variant">From ₹11,000 / person</span>
+                      <span className="text-xs font-medium text-on-surface-variant">From ₹12,000 / person</span>
                       <button
-                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1"
+                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setDestination("Manali, Himachal Pradesh");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          document.getElementById("planner")?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         <span>Explore Itineraries</span>
@@ -1278,10 +939,9 @@ export default function Home() {
                     <div className="pt-space-sm border-t border-surface-container flex items-center justify-between">
                       <span className="text-xs font-medium text-on-surface-variant">From ₹18,000 / person</span>
                       <button
-                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1"
+                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setDestination("Kerala, India");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          document.getElementById("planner")?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         <span>Explore Itineraries</span>
@@ -1317,10 +977,9 @@ export default function Home() {
                     <div className="pt-space-sm border-t border-surface-container flex items-center justify-between">
                       <span className="text-xs font-medium text-on-surface-variant">From ₹9,500 / person</span>
                       <button
-                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1"
+                        className="text-primary hover:text-primary-container font-label-sm text-label-sm font-bold flex items-center gap-1 cursor-pointer"
                         onClick={() => {
-                          setDestination("Varanasi, Uttar Pradesh");
-                          window.scrollTo({ top: 0, behavior: "smooth" });
+                          document.getElementById("planner")?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         <span>Explore Itineraries</span>

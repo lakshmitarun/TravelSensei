@@ -1,11 +1,45 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Fetch the authenticated user's own profile
+    const { searchParams } = new URL(request.url);
+    const queryId = searchParams.get("id");
+
+    if (queryId && queryId !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
+      );
+    }
+
     const { data, error } = await supabase
       .from("users")
-      .select("id, email, full_name, avatar_url, created_at");
+      .select("id, email, full_name, avatar_url, created_at")
+      .eq("id", user.id)
+      .maybeSingle();
 
     if (error) {
       console.error("Supabase query error:", error.message);
@@ -13,16 +47,26 @@ export async function GET() {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to fetch users from database.",
+          message: "Failed to fetch user profile from database.",
         },
         { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User not found.",
+        },
+        { status: 404 }
       );
     }
 
     return NextResponse.json(
       {
         success: true,
-        users: data,
+        user: data,
       },
       { status: 200 }
     );
@@ -30,12 +74,12 @@ export async function GET() {
     const errorMessage =
       err instanceof Error ? err.message : "Unknown error";
 
-    console.error("Unexpected error fetching users:", errorMessage);
+    console.error("Unexpected error fetching user profile:", errorMessage);
 
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -44,28 +88,65 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
 
-    const { email, full_name, avatar_url } = body;
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-    if (!email) {
+    if (authError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error: "Email is required.",
+          message: "Authentication required",
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
+
+    // 2. Prevent duplicate profile creation
+    const { data: existingUser, error: checkErr } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (checkErr) {
+      console.error("Supabase check error:", checkErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to check existing user profile.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (existingUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User profile already exists.",
+        },
+        { status: 409 }
+      );
+    }
+
+    // 3. Parse request body - client cannot spoof user ID or email
+    const body = await request.json().catch(() => ({}));
+    const { full_name, avatar_url } = body;
 
     const { data, error } = await supabase
       .from("users")
       .insert({
-        email,
-        full_name,
-        avatar_url,
+        id: user.id,
+        email: user.email || "",
+        full_name: full_name || null,
+        avatar_url: avatar_url || null,
       })
-      .select()
+      .select("id, email, full_name, avatar_url, created_at")
       .single();
 
     if (error) {
@@ -74,7 +155,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to create user.",
+          message: "Failed to create user profile.",
         },
         { status: 500 }
       );
@@ -91,12 +172,12 @@ export async function POST(request: Request) {
     const errorMessage =
       err instanceof Error ? err.message : "Unknown error";
 
-    console.error("Unexpected error creating user:", errorMessage);
+    console.error("Unexpected error creating user profile:", errorMessage);
 
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -105,16 +186,46 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id, full_name, avatar_url } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "User ID is required.",
+          message: "User ID is required.",
         },
         { status: 400 }
+      );
+    }
+
+    // 3. Prevent cross-user profile modifications
+    if (id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
       );
     }
 
@@ -130,36 +241,55 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "No fields provided to update.",
+          message: "No fields provided to update.",
         },
         { status: 400 }
       );
     }
 
+    // 4. Verify that the user profile exists
+    const { data: existingProfile, error: fetchErr } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("Supabase fetch error:", fetchErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify user profile.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!existingProfile) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    // 5. Update user profile
     const { data, error } = await supabase
       .from("users")
       .update(updateData)
-      .eq("id", id)
-      .select()
+      .eq("id", user.id)
+      .select("id, email, full_name, avatar_url, created_at")
       .single();
 
     if (error) {
       console.error("Supabase update error:", error.message);
 
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "User not found.",
-          },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to update user.",
+          message: "Failed to update user.",
         },
         { status: 500 }
       );
@@ -181,7 +311,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -190,43 +320,92 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "User ID is required.",
+          message: "User ID is required.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Prevent deleting another user's profile
+    if (id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Verify profile exists
+    const { data: existingProfile, error: fetchErr } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("Supabase fetch error:", fetchErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify user profile.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!existingProfile) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    // 5. Delete public.users record
     const { data, error } = await supabase
       .from("users")
       .delete()
-      .eq("id", id)
-      .select()
+      .eq("id", user.id)
+      .select("id, email, full_name, avatar_url, created_at")
       .single();
 
     if (error) {
       console.error("Supabase delete error:", error.message);
 
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "User not found.",
-          },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to delete user.",
+          message: "Failed to delete user.",
         },
         { status: 500 }
       );
@@ -249,7 +428,7 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );

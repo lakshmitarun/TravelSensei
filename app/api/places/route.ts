@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   try {
+    const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const destinationId = searchParams.get("destination_id");
 
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Failed to fetch places for destination from database.",
+            message: "Failed to fetch places for destination from database.",
           },
           { status: 500 }
         );
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to fetch places from database.",
+          message: "Failed to fetch places from database.",
         },
         { status: 500 }
       );
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -74,19 +75,67 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse and validate request body
+    const body = await request.json().catch(() => ({}));
     const { destination_id, name, category, latitude, longitude, description } = body;
 
     if (!destination_id || !name || !category || latitude === undefined || longitude === undefined) {
       return NextResponse.json(
         {
           success: false,
-          error: "Destination ID, name, category, latitude, and longitude are required fields.",
+          message: "Destination ID, name, category, latitude, and longitude are required fields.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Validate that destination_id exists in public.destinations
+    const { data: destination, error: destErr } = await supabase
+      .from("destinations")
+      .select("id")
+      .eq("id", destination_id)
+      .maybeSingle();
+
+    if (destErr) {
+      console.error("Supabase destination query error:", destErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify destination.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!destination) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid destination_id. Destination does not exist.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 4. Insert place record
     const { data, error } = await supabase
       .from("places")
       .insert({
@@ -97,26 +146,16 @@ export async function POST(request: Request) {
         longitude,
         description,
       })
-      .select()
+      .select("id, destination_id, name, category, latitude, longitude, description, created_at")
       .single();
 
     if (error) {
       console.error("Supabase insert error:", error.message);
 
-      if (error.code === "23503") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Invalid destination_id. Destination does not exist.",
-          },
-          { status: 400 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to create place.",
+          message: "Failed to create place.",
         },
         { status: 500 }
       );
@@ -138,7 +177,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -147,14 +186,33 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
-    const { id, name, category, latitude, longitude, description } = body;
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse and validate request body
+    const body = await request.json().catch(() => ({}));
+    const { id, destination_id, name, category, latitude, longitude, description } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "Place ID is required.",
+          message: "Place ID is required.",
         },
         { status: 400 }
       );
@@ -167,21 +225,54 @@ export async function PATCH(request: Request) {
     if (longitude !== undefined) updateData.longitude = longitude;
     if (description !== undefined) updateData.description = description;
 
+    // 3. If destination_id is provided, validate that it exists
+    if (destination_id !== undefined) {
+      const { data: destination, error: destErr } = await supabase
+        .from("destinations")
+        .select("id")
+        .eq("id", destination_id)
+        .maybeSingle();
+
+      if (destErr) {
+        console.error("Supabase destination query error:", destErr.message);
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Failed to verify destination.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!destination) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Invalid destination_id. Destination does not exist.",
+          },
+          { status: 400 }
+        );
+      }
+
+      updateData.destination_id = destination_id;
+    }
+
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "No fields provided to update.",
+          message: "No fields provided to update.",
         },
         { status: 400 }
       );
     }
 
+    // 4. Update place record
     const { data, error } = await supabase
       .from("places")
       .update(updateData)
       .eq("id", id)
-      .select()
+      .select("id, destination_id, name, category, latitude, longitude, description, created_at")
       .single();
 
     if (error) {
@@ -191,7 +282,7 @@ export async function PATCH(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Place not found.",
+            message: "Place not found.",
           },
           { status: 404 }
         );
@@ -200,7 +291,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to update place.",
+          message: "Failed to update place.",
         },
         { status: 500 }
       );
@@ -222,7 +313,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -231,24 +322,44 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "Place ID is required.",
+          message: "Place ID is required.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Delete place record
     const { data, error } = await supabase
       .from("places")
       .delete()
       .eq("id", id)
-      .select()
+      .select("id, destination_id, name, category, latitude, longitude, description, created_at")
       .single();
 
     if (error) {
@@ -258,7 +369,7 @@ export async function DELETE(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Place not found.",
+            message: "Place not found.",
           },
           { status: 404 }
         );
@@ -267,7 +378,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to delete place.",
+          message: "Failed to delete place.",
         },
         { status: 500 }
       );
@@ -290,9 +401,10 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
   }
 }
+

@@ -1,21 +1,39 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   try {
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Query trips belonging strictly to the authenticated user
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("user_id");
     const destinationId = searchParams.get("destination_id");
+    const tripId = searchParams.get("id") || searchParams.get("trip_id");
 
     let query = supabase
       .from("trips")
-      .select("id, user_id, destination_id, travel_date, budget, travel_style, status, created_at");
+      .select("id, user_id, destination_id, travel_date, budget, travel_style, status, created_at")
+      .eq("user_id", user.id);
 
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
-
-    if (destinationId) {
+    if (tripId) {
+      query = query.eq("id", tripId);
+    } else if (destinationId) {
       query = query.eq("destination_id", destinationId);
     }
 
@@ -27,7 +45,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to fetch trips from database.",
+          message: "Failed to fetch trips from database.",
         },
         { status: 500 }
       );
@@ -49,7 +67,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -58,30 +76,50 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { user_id, destination_id, travel_date, budget, travel_style, status } = body;
+    const supabase = await createClient();
 
-    if (!user_id || !destination_id || !travel_date || budget === undefined) {
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error: "User ID, destination ID, travel date, and budget are required fields.",
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body - ignore any client-supplied user_id
+    const body = await request.json().catch(() => ({}));
+    const { destination_id, travel_date, budget, travel_style, status } = body;
+
+    if (!destination_id || !travel_date || budget === undefined) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Destination ID, travel date, and budget are required fields.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Insert record using authenticated user.id as source of truth
     const { data, error } = await supabase
       .from("trips")
       .insert({
-        user_id,
+        user_id: user.id,
         destination_id,
         travel_date,
         budget,
         travel_style,
         status: status || "planned",
       })
-      .select()
+      .select("id, user_id, destination_id, travel_date, budget, travel_style, status, created_at")
       .single();
 
     if (error) {
@@ -91,7 +129,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Invalid user_id or destination_id. User or destination does not exist.",
+            message: "Invalid destination_id. Destination does not exist.",
           },
           { status: 400 }
         );
@@ -100,7 +138,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to create trip.",
+          message: "Failed to create trip.",
         },
         { status: 500 }
       );
@@ -122,7 +160,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -131,14 +169,33 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id, travel_date, budget, travel_style, status } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "Trip ID is required.",
+          message: "Trip ID is required.",
         },
         { status: 400 }
       );
@@ -154,36 +211,66 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "No fields provided to update.",
+          message: "No fields provided to update.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Verify ownership of the trip record
+    const { data: existingTrip, error: fetchErr } = await supabase
+      .from("trips")
+      .select("id, user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("Supabase query error:", fetchErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify trip ownership.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!existingTrip) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Trip not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    if (existingTrip.user_id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Update the trip record enforcing user_id match
     const { data, error } = await supabase
       .from("trips")
       .update(updateData)
       .eq("id", id)
-      .select()
+      .eq("user_id", user.id)
+      .select("id, user_id, destination_id, travel_date, budget, travel_style, status, created_at")
       .single();
 
     if (error) {
       console.error("Supabase update error:", error.message);
 
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Trip not found.",
-          },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to update trip.",
+          message: "Failed to update trip.",
         },
         { status: 500 }
       );
@@ -205,7 +292,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -214,43 +301,92 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "Trip ID is required.",
+          message: "Trip ID is required.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Verify ownership of the trip record
+    const { data: existingTrip, error: fetchErr } = await supabase
+      .from("trips")
+      .select("id, user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("Supabase query error:", fetchErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify trip ownership.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!existingTrip) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Trip not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    if (existingTrip.user_id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Delete the trip record enforcing user_id match
     const { data, error } = await supabase
       .from("trips")
       .delete()
       .eq("id", id)
-      .select()
+      .eq("user_id", user.id)
+      .select("id, user_id, destination_id, travel_date, budget, travel_style, status, created_at")
       .single();
 
     if (error) {
       console.error("Supabase delete error:", error.message);
 
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Trip not found.",
-          },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to delete trip.",
+          message: "Failed to delete trip.",
         },
         { status: 500 }
       );
@@ -273,9 +409,10 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
   }
 }
+

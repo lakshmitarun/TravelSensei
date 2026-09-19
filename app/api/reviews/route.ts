@@ -1,19 +1,34 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   try {
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Query reviews belonging strictly to the authenticated user
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("user_id");
     const placeId = searchParams.get("place_id");
 
     let query = supabase
       .from("reviews")
-      .select("id, user_id, place_id, rating, comment, created_at");
-
-    if (userId) {
-      query = query.eq("user_id", userId);
-    }
+      .select("id, user_id, place_id, rating, comment, created_at")
+      .eq("user_id", user.id);
 
     if (placeId) {
       query = query.eq("place_id", placeId);
@@ -27,7 +42,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to fetch reviews from database.",
+          message: "Failed to fetch reviews from database.",
         },
         { status: 500 }
       );
@@ -49,7 +64,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -58,28 +73,48 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { user_id, place_id, rating, comment } = body;
+    const supabase = await createClient();
 
-    if (!user_id || !place_id) {
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error: "User ID and place ID are required fields.",
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body - ignore any client-supplied user_id
+    const body = await request.json().catch(() => ({}));
+    const { place_id, rating, comment } = body;
+
+    if (!place_id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Place ID is required.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Insert record using authenticated user.id as source of truth
     const { data, error } = await supabase
       .from("reviews")
       .insert({
-        user_id,
+        user_id: user.id,
         place_id,
         rating,
         comment,
       })
-      .select()
+      .select("id, user_id, place_id, rating, comment, created_at")
       .single();
 
     if (error) {
@@ -89,7 +124,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Invalid user_id or place_id. User or place does not exist.",
+            message: "Invalid place_id. Place does not exist.",
           },
           { status: 400 }
         );
@@ -98,7 +133,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to create review.",
+          message: "Failed to create review.",
         },
         { status: 500 }
       );
@@ -120,7 +155,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -129,14 +164,33 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id, rating, comment } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "Review ID is required.",
+          message: "Review ID is required.",
         },
         { status: 400 }
       );
@@ -150,36 +204,66 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "No fields provided to update.",
+          message: "No fields provided to update.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Verify ownership of the review record
+    const { data: existingReview, error: fetchErr } = await supabase
+      .from("reviews")
+      .select("id, user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("Supabase query error:", fetchErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify review ownership.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!existingReview) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Review not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    if (existingReview.user_id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Update the review record enforcing user_id match
     const { data, error } = await supabase
       .from("reviews")
       .update(updateData)
       .eq("id", id)
-      .select()
+      .eq("user_id", user.id)
+      .select("id, user_id, place_id, rating, comment, created_at")
       .single();
 
     if (error) {
       console.error("Supabase update error:", error.message);
 
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Review not found.",
-          },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to update review.",
+          message: "Failed to update review.",
         },
         { status: 500 }
       );
@@ -201,7 +285,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -210,43 +294,92 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json();
+    const supabase = await createClient();
+
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Authentication required",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
     const { id } = body;
 
     if (!id) {
       return NextResponse.json(
         {
           success: false,
-          error: "Review ID is required.",
+          message: "Review ID is required.",
         },
         { status: 400 }
       );
     }
 
+    // 3. Verify ownership of the review record
+    const { data: existingReview, error: fetchErr } = await supabase
+      .from("reviews")
+      .select("id, user_id")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (fetchErr) {
+      console.error("Supabase query error:", fetchErr.message);
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to verify review ownership.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!existingReview) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Review not found.",
+        },
+        { status: 404 }
+      );
+    }
+
+    if (existingReview.user_id !== user.id) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Forbidden",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 4. Delete the review record enforcing user_id match
     const { data, error } = await supabase
       .from("reviews")
       .delete()
       .eq("id", id)
-      .select()
+      .eq("user_id", user.id)
+      .select("id, user_id, place_id, rating, comment, created_at")
       .single();
 
     if (error) {
       console.error("Supabase delete error:", error.message);
 
-      if (error.code === "PGRST116") {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Review not found.",
-          },
-          { status: 404 }
-        );
-      }
-
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to delete review.",
+          message: "Failed to delete review.",
         },
         { status: 500 }
       );
@@ -269,9 +402,10 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
   }
 }
+

@@ -1,52 +1,33 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("user_id");
+    const supabase = await createClient();
 
-    if (userId) {
-      const { data, error } = await supabase
-        .from("user_preferences")
-        .select("id, user_id, travel_style, budget, created_at, updated_at")
-        .eq("user_id", userId)
-        .maybeSingle();
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-      if (error) {
-        console.error("Supabase query error:", error.message);
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Failed to fetch user preferences from database.",
-          },
-          { status: 500 }
-        );
-      }
-
-      if (!data) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "User preferences not found.",
-          },
-          { status: 404 }
-        );
-      }
-
+    if (authError || !user) {
       return NextResponse.json(
         {
-          success: true,
-          preference: data,
+          success: false,
+          message: "Authentication required",
         },
-        { status: 200 }
+        { status: 401 }
       );
     }
 
+    // 2. Fetch preferences for the authenticated user only
+    // Ignore any client-supplied user_id search parameter to prevent IDOR / unauthorized access
     const { data, error } = await supabase
       .from("user_preferences")
-      .select("id, user_id, travel_style, budget, created_at, updated_at");
+      .select("id, user_id, travel_style, budget, created_at, updated_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
     if (error) {
       console.error("Supabase query error:", error.message);
@@ -54,16 +35,26 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to fetch user preferences from database.",
+          message: "Failed to fetch user preferences from database.",
         },
         { status: 500 }
+      );
+    }
+
+    if (!data) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "User preferences not found.",
+        },
+        { status: 404 }
       );
     }
 
     return NextResponse.json(
       {
         success: true,
-        preferences: data,
+        preference: data,
       },
       { status: 200 }
     );
@@ -76,7 +67,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -85,27 +76,37 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { user_id, travel_style, budget } = body;
+    const supabase = await createClient();
 
-    if (!user_id) {
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error: "User ID is required.",
+          message: "Authentication required",
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
 
+    // 2. Parse request body - ignore any client-supplied user_id
+    const body = await request.json().catch(() => ({}));
+    const { travel_style, budget } = body;
+
+    // 3. Insert record using authenticated user.id as source of truth
     const { data, error } = await supabase
       .from("user_preferences")
       .insert({
-        user_id,
+        user_id: user.id,
         travel_style,
         budget,
       })
-      .select()
+      .select("id, user_id, travel_style, budget, created_at, updated_at")
       .single();
 
     if (error) {
@@ -115,7 +116,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Preferences already exist for this user.",
+            message: "Preferences already exist for this user.",
           },
           { status: 409 }
         );
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            error: "Invalid user_id. User does not exist.",
+            message: "Invalid user. User does not exist in database.",
           },
           { status: 400 }
         );
@@ -134,7 +135,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to create user preferences.",
+          message: "Failed to create user preferences.",
         },
         { status: 500 }
       );
@@ -156,7 +157,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -165,18 +166,27 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    const body = await request.json();
-    const { id, travel_style, budget } = body;
+    const supabase = await createClient();
 
-    if (!id) {
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error: "Preference ID is required.",
+          message: "Authentication required",
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
+
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
+    const { id, travel_style, budget } = body;
 
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -188,36 +198,102 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "No fields provided to update.",
+          message: "No fields provided to update.",
         },
         { status: 400 }
       );
     }
 
-    const { data, error } = await supabase
-      .from("user_preferences")
-      .update(updateData)
-      .eq("id", id)
-      .select()
-      .single();
+    let targetId: string;
 
-    if (error) {
-      console.error("Supabase update error:", error.message);
+    if (id) {
+      // 3a. If ID provided, verify ownership of that record
+      const { data: existingPref, error: fetchErr } = await supabase
+        .from("user_preferences")
+        .select("id, user_id")
+        .eq("id", id)
+        .maybeSingle();
 
-      if (error.code === "PGRST116") {
+      if (fetchErr) {
+        console.error("Supabase query error:", fetchErr.message);
         return NextResponse.json(
           {
             success: false,
-            error: "User preference record not found.",
+            message: "Failed to verify user preferences.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!existingPref) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "User preference record not found.",
           },
           { status: 404 }
         );
       }
 
+      if (existingPref.user_id !== user.id) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Forbidden",
+          },
+          { status: 403 }
+        );
+      }
+
+      targetId = existingPref.id;
+    } else {
+      // 3b. If ID not provided, target authenticated user's preferences record
+      const { data: userPref, error: fetchErr } = await supabase
+        .from("user_preferences")
+        .select("id, user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.error("Supabase query error:", fetchErr.message);
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Failed to verify user preferences.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!userPref) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "User preferences not found.",
+          },
+          { status: 404 }
+        );
+      }
+
+      targetId = userPref.id;
+    }
+
+    // 4. Update the preference record enforcing user_id match
+    const { data, error } = await supabase
+      .from("user_preferences")
+      .update(updateData)
+      .eq("id", targetId)
+      .eq("user_id", user.id)
+      .select("id, user_id, travel_style, budget, created_at, updated_at")
+      .single();
+
+    if (error) {
+      console.error("Supabase update error:", error.message);
+
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to update user preferences.",
+          message: "Failed to update user preferences.",
         },
         { status: 500 }
       );
@@ -239,7 +315,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
@@ -248,43 +324,118 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const body = await request.json();
-    const { id } = body;
+    const supabase = await createClient();
 
-    if (!id) {
+    // 1. Authenticate user strictly from Supabase SSR session
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
       return NextResponse.json(
         {
           success: false,
-          error: "Preference ID is required.",
+          message: "Authentication required",
         },
-        { status: 400 }
+        { status: 401 }
       );
     }
 
-    const { data, error } = await supabase
-      .from("user_preferences")
-      .delete()
-      .eq("id", id)
-      .select()
-      .single();
+    // 2. Parse request body
+    const body = await request.json().catch(() => ({}));
+    const { id } = body;
 
-    if (error) {
-      console.error("Supabase delete error:", error.message);
+    let targetId: string;
 
-      if (error.code === "PGRST116") {
+    if (id) {
+      // 3a. If ID provided, verify ownership of that record
+      const { data: existingPref, error: fetchErr } = await supabase
+        .from("user_preferences")
+        .select("id, user_id")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.error("Supabase query error:", fetchErr.message);
         return NextResponse.json(
           {
             success: false,
-            error: "User preference record not found.",
+            message: "Failed to verify user preferences.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!existingPref) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "User preference record not found.",
           },
           { status: 404 }
         );
       }
 
+      if (existingPref.user_id !== user.id) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Forbidden",
+          },
+          { status: 403 }
+        );
+      }
+
+      targetId = existingPref.id;
+    } else {
+      // 3b. If ID not provided, target authenticated user's preferences record
+      const { data: userPref, error: fetchErr } = await supabase
+        .from("user_preferences")
+        .select("id, user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (fetchErr) {
+        console.error("Supabase query error:", fetchErr.message);
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Failed to verify user preferences.",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (!userPref) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "User preferences not found.",
+          },
+          { status: 404 }
+        );
+      }
+
+      targetId = userPref.id;
+    }
+
+    // 4. Delete the preference record enforcing user_id match
+    const { data, error } = await supabase
+      .from("user_preferences")
+      .delete()
+      .eq("id", targetId)
+      .eq("user_id", user.id)
+      .select("id, user_id, travel_style, budget, created_at, updated_at")
+      .single();
+
+    if (error) {
+      console.error("Supabase delete error:", error.message);
+
       return NextResponse.json(
         {
           success: false,
-          error: "Failed to delete user preferences.",
+          message: "Failed to delete user preferences.",
         },
         { status: 500 }
       );
@@ -307,9 +458,10 @@ export async function DELETE(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "An internal server error occurred.",
+        message: "An internal server error occurred.",
       },
       { status: 500 }
     );
   }
 }
+
