@@ -1,4 +1,4 @@
-import { Destination, RecommendationPreferences, ScoredDestination } from "@/lib/recommendations";
+import type { Destination, RecommendationPreferences, ScoredDestination } from "@/lib/recommendations";
 
 export interface TravelPlanActivity {
   time: string; // e.g., "Morning", "Afternoon", "Evening"

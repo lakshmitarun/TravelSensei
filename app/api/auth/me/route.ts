@@ -32,6 +32,21 @@ export async function GET() {
       console.error("Error fetching user profile from public.users:", dbError.message);
     }
 
+    if (!publicUser) {
+      try {
+        await supabase.from("users").upsert(
+          {
+            id: user.id,
+            email: user.email || "",
+            full_name: user.user_metadata?.full_name || null,
+          },
+          { onConflict: "id" }
+        );
+      } catch (upsertErr) {
+        console.warn("Could not sync public.users on me route:", upsertErr);
+      }
+    }
+
     const safeProfile = {
       id: user.id,
       email: publicUser?.email || user.email || "",

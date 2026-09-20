@@ -6,12 +6,14 @@ import TravelSenseiLogo from "@/components/TravelSenseiLogo";
 import { TripCard, TripItem } from "@/components/trips";
 import { Destination } from "@/lib/recommendations/types";
 import { Button } from "@/components/ui/button";
+import AccountMenu from "@/components/auth/AccountMenu";
 
 export default function MyTripsPage() {
   const [trips, setTrips] = useState<TripItem[]>([]);
   const [destinationsMap, setDestinationsMap] = useState<Record<string, Destination>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; full_name?: string | null } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -24,17 +26,21 @@ export default function MyTripsPage() {
         const authRes = await fetch("/api/auth/me");
         if (authRes.status === 401) {
           setIsAuthenticated(false);
+          setCurrentUser(null);
           setIsLoading(false);
           return;
         }
 
         if (!authRes.ok) {
           setIsAuthenticated(false);
+          setCurrentUser(null);
           setIsLoading(false);
           return;
         }
 
+        const authData = await authRes.json();
         setIsAuthenticated(true);
+        setCurrentUser(authData?.user || null);
 
         // 2. Fetch user's trips and public destination catalog in parallel
         const [tripsRes, destsRes] = await Promise.all([
@@ -97,6 +103,15 @@ export default function MyTripsPage() {
             >
               <span>+ Plan Trip</span>
             </Link>
+            {isAuthenticated && (
+              <AccountMenu
+                user={currentUser}
+                onLogoutSuccess={() => {
+                  window.location.href = "/";
+                }}
+                className="ml-1"
+              />
+            )}
           </nav>
         </div>
       </header>
@@ -125,7 +140,7 @@ export default function MyTripsPage() {
             </div>
             <div className="flex items-center gap-3 pt-2">
               <Link
-                href="/#login"
+                href="/login"
                 className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-bold shadow-md transition-all cursor-pointer"
               >
                 Sign In to TravelSensei

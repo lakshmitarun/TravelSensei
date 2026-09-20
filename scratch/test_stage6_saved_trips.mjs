@@ -29,6 +29,11 @@ async function runStage6Tests() {
   const USER_A_ID = "64398361-4e44-4f35-9fc4-f887dc8d3ea4";
   const USER_B_ID = "c69e7d37-395c-4e8d-bff2-bfb04b1c99f8";
 
+  await supabase.from("users").upsert([
+    { id: USER_A_ID, email: "testuser_a@travelsensei.local", full_name: "Test User A" },
+    { id: USER_B_ID, email: "testuser_b@travelsensei.local", full_name: "Test User B" },
+  ]);
+
   // Fetch real destination from public catalog
   const { data: destinations } = await supabase
     .from("destinations")
@@ -205,6 +210,9 @@ async function runStage6Tests() {
   const healthRes = await fetch(`${BASE_URL}/api/health`);
   const healthJson = await healthRes.json();
   assert(healthRes.status === 200 && healthJson.status === "success", "Backend health check 200 OK");
+
+  // Cleanup test users
+  await supabase.from("users").delete().in("id", [USER_A_ID, USER_B_ID]);
 
   console.log("\n=================================================");
   console.log(`ALL ${totalTests} STAGE 6 TESTS PASSED! ✅ (${passedTests}/${totalTests})`);

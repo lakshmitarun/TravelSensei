@@ -4,10 +4,49 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import TravelSenseiLogo from "@/components/TravelSenseiLogo";
 import { TravelPlanner } from "@/components/travel-planner";
+import AccountMenu from "@/components/auth/AccountMenu";
 
 export default function Home() {
   const [activeNav, setActiveNav] = useState("home");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    email: string;
+    full_name?: string | null;
+  } | null>(null);
+  const [isLoggingOutMobile, setIsLoggingOutMobile] = useState(false);
+
+  useEffect(() => {
+    async function checkAuth() {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.success && data?.user) {
+            setIsAuthenticated(true);
+            setCurrentUser(data.user);
+            return;
+          }
+        }
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      } catch {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      }
+    }
+    checkAuth();
+  }, []);
+
+  const navItems = [
+    { id: "home", label: "Home", href: "#" },
+    ...(isAuthenticated ? [{ id: "my-trips", label: "My Trips", href: "/my-trips" }] : []),
+    { id: "explore", label: "Explore", href: "#destinations" },
+    { id: "how-it-works", label: "How It Works", href: "#how-it-works" },
+    { id: "features", label: "Features", href: "#suite" },
+    { id: "community", label: "Community", href: "#reviews" },
+  ];
 
   return (
     <div className="bg-surface font-body-md text-body-md text-on-surface antialiased min-h-screen flex flex-col">
@@ -21,14 +60,7 @@ export default function Home() {
 
           {/* CENTER: Navigation Links */}
           <nav className="hidden lg:flex items-center gap-7">
-            {[
-              { id: "home", label: "Home", href: "#" },
-              { id: "my-trips", label: "My Trips", href: "/my-trips" },
-              { id: "explore", label: "Explore", href: "#destinations" },
-              { id: "how-it-works", label: "How It Works", href: "#how-it-works" },
-              { id: "features", label: "Features", href: "#suite" },
-              { id: "community", label: "Community", href: "#reviews" },
-            ].map((item) => {
+            {navItems.map((item) => {
               const isActive = activeNav === item.id;
               return (
                 <a
@@ -52,29 +84,46 @@ export default function Home() {
 
           {/* RIGHT: Actions */}
           <div className="flex items-center gap-3">
-            <a
-              className="h-[46px] px-5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-semibold text-[15px] shadow-sm hover:shadow transition-all flex items-center gap-1.5"
-              href="#planner"
-            >
-              <span>Start Planning</span>
-              <span className="material-symbols-outlined text-[18px]">
-                arrow_forward
-              </span>
-            </a>
-            <Link
-              href="/my-trips"
-              className="w-[42px] h-[42px] rounded-full bg-surface-container hover:bg-primary/10 text-primary border border-surface-container-high flex items-center justify-center cursor-pointer transition-colors"
-              title="My Trips & Account"
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                person
-              </span>
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <a
+                  className="h-[46px] px-5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-semibold text-[15px] shadow-sm hover:shadow transition-all flex items-center gap-1.5"
+                  href="#planner"
+                >
+                  <span>Start Planning</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    arrow_forward
+                  </span>
+                </a>
+                <AccountMenu
+                  user={currentUser}
+                  onLogoutSuccess={() => {
+                    setIsAuthenticated(false);
+                    setCurrentUser(null);
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="text-on-surface-variant hover:text-on-surface px-3.5 py-2 rounded-xl text-[15px] font-semibold transition-colors"
+                >
+                  Login
+                </Link>
+                <Link
+                  href="/signup"
+                  className="h-[42px] px-5 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-semibold text-[15px] shadow-sm hover:shadow transition-all flex items-center justify-center"
+                >
+                  Sign Up
+                </Link>
+              </>
+            )}
             {/* Mobile Menu Toggle Button */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden w-[42px] h-[42px] rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface flex items-center justify-center transition-colors"
+              className="lg:hidden w-[42px] h-[42px] rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface flex items-center justify-center transition-colors ml-1"
               aria-label="Toggle Navigation Menu"
             >
               <span className="material-symbols-outlined text-[22px]">
@@ -87,14 +136,7 @@ export default function Home() {
         {/* Mobile Navigation Drawer */}
         {isMobileMenuOpen && (
           <div className="lg:hidden border-t border-surface-container-high/40 bg-surface/98 backdrop-blur-2xl px-6 py-4 flex flex-col gap-2 shadow-lg">
-            {[
-              { id: "home", label: "Home", href: "#" },
-              { id: "my-trips", label: "My Trips", href: "/my-trips" },
-              { id: "explore", label: "Explore", href: "#destinations" },
-              { id: "how-it-works", label: "How It Works", href: "#how-it-works" },
-              { id: "features", label: "Features", href: "#suite" },
-              { id: "community", label: "Community", href: "#reviews" },
-            ].map((item) => (
+            {navItems.map((item) => (
               <a
                 key={item.id}
                 href={item.href}
@@ -111,6 +153,81 @@ export default function Home() {
                 {item.label}
               </a>
             ))}
+            <div className="pt-2 mt-1 border-t border-surface-container-high/50 flex flex-col gap-2">
+              {isAuthenticated ? (
+                <>
+                  <div className="px-3 py-2 bg-surface-container-low rounded-xl flex flex-col gap-0.5 text-left">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant/70">
+                      Signed in as
+                    </span>
+                    {currentUser?.full_name && (
+                      <span className="text-xs font-bold text-on-surface truncate">
+                        {currentUser.full_name}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-on-surface-variant truncate">
+                      {currentUser?.email}
+                    </span>
+                  </div>
+                  <a
+                    href="#planner"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="h-10 px-4 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-semibold text-sm shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <span>Start Planning</span>
+                    <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                  </a>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Link
+                      href="/my-trips"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="h-10 px-3 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-xs flex items-center justify-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">luggage</span>
+                      <span>My Trips</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (isLoggingOutMobile) return;
+                        setIsLoggingOutMobile(true);
+                        try {
+                          await fetch("/api/auth/logout", { method: "POST" });
+                          setIsAuthenticated(false);
+                          setCurrentUser(null);
+                          setIsMobileMenuOpen(false);
+                          window.location.href = "/";
+                        } finally {
+                          setIsLoggingOutMobile(false);
+                        }
+                      }}
+                      disabled={isLoggingOutMobile}
+                      className="h-10 px-3 rounded-xl bg-error-container/30 hover:bg-error-container/50 text-error font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">logout</span>
+                      <span>{isLoggingOutMobile ? "Logging out..." : "Log out"}</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href="/login"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="h-10 rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-sm flex items-center justify-center"
+                  >
+                    Login
+                  </Link>
+                  <Link
+                    href="/signup"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="h-10 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-semibold text-sm shadow-sm flex items-center justify-center"
+                  >
+                    Sign Up
+                  </Link>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </header>

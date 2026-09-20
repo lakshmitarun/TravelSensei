@@ -7,6 +7,7 @@ import TravelSenseiLogo from "@/components/TravelSenseiLogo";
 import { TripDetails, TripItem, ItineraryItem } from "@/components/trips";
 import { Destination } from "@/lib/recommendations/types";
 import { Button } from "@/components/ui/button";
+import AccountMenu from "@/components/auth/AccountMenu";
 
 export default function TripDetailPage() {
   const params = useParams();
@@ -17,6 +18,7 @@ export default function TripDetailPage() {
   const [destination, setDestination] = useState<Destination | undefined>(undefined);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; full_name?: string | null } | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -38,11 +40,21 @@ export default function TripDetailPage() {
         const authRes = await fetch("/api/auth/me");
         if (authRes.status === 401) {
           setIsAuthenticated(false);
+          setCurrentUser(null);
           setIsLoading(false);
           return;
         }
 
+        if (!authRes.ok) {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+          setIsLoading(false);
+          return;
+        }
+
+        const authData = await authRes.json();
         setIsAuthenticated(true);
+        setCurrentUser(authData?.user || null);
 
         // 2. Fetch specific trip and its itineraries
         const [tripRes, itinRes, destsRes] = await Promise.all([
@@ -135,6 +147,15 @@ export default function TripDetailPage() {
             >
               <span>+ Plan Trip</span>
             </Link>
+            {isAuthenticated && (
+              <AccountMenu
+                user={currentUser}
+                onLogoutSuccess={() => {
+                  window.location.href = "/";
+                }}
+                className="ml-1"
+              />
+            )}
           </nav>
         </div>
       </header>
@@ -162,7 +183,7 @@ export default function TripDetailPage() {
               </p>
             </div>
             <Link
-              href="/#login"
+              href="/login"
               className="px-6 py-3 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-bold shadow-md transition-all cursor-pointer"
             >
               Sign In to Account

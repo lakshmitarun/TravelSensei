@@ -1,6 +1,6 @@
 import Groq from "groq-sdk";
-import { Destination, RecommendationPreferences, ScoredDestination } from "@/lib/recommendations";
-import { StructuredTravelPlan, TravelPlanDay, TravelPlanActivity } from "./types";
+import type { Destination, RecommendationPreferences, ScoredDestination } from "@/lib/recommendations";
+import type { StructuredTravelPlan, TravelPlanDay, TravelPlanActivity } from "./types";
 
 // Server-side Groq configuration
 const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
@@ -144,7 +144,7 @@ export function buildGroqPrompts(options: GeneratePlanOptions) {
   const safeUserBudget = typeof preferences.budget === "number" ? `$${preferences.budget}` : "flexible";
 
   const reasonsText = recommendation.reasons && recommendation.reasons.length > 0
-    ? recommendation.reasons.map((r) => `- ${r}`).join("\n")
+    ? recommendation.reasons.map((r: string) => `- ${r}`).join("\n")
     : "- Selected destination for travel plan";
 
   const systemPrompt = `You are an expert AI travel planner for TravelSensei.
@@ -216,6 +216,7 @@ Generate exactly ${safeDuration} day entries in the "days" array, with 2-3 activ
 export async function generateAITravelPlan(options: GeneratePlanOptions): Promise<StructuredTravelPlan> {
   const groq = getGroqClient();
   if (!groq) {
+    console.error("[Groq AI] Stage: init | Error: GROQ_API_KEY environment variable is not configured.");
     const error = new Error("Groq API key is not configured.");
     (error as unknown as { code: string }).code = "GROQ_NOT_CONFIGURED";
     throw error;
@@ -240,6 +241,7 @@ export async function generateAITravelPlan(options: GeneratePlanOptions): Promis
     const rawContent = choice?.message?.content;
 
     if (!rawContent || rawContent.trim().length === 0) {
+      console.error(`[Groq AI] Stage: response_parsing | Model: ${model} | Error: Empty content in completion choice`);
       const error = new Error("Empty response from AI provider.");
       (error as unknown as { code: string }).code = "GROQ_EMPTY_RESPONSE";
       throw error;
@@ -249,6 +251,7 @@ export async function generateAITravelPlan(options: GeneratePlanOptions): Promis
     try {
       parsedJson = JSON.parse(rawContent);
     } catch {
+      console.error(`[Groq AI] Stage: json_parsing | Model: ${model} | Error: Response content was not valid JSON`);
       const error = new Error("Invalid JSON response from AI provider.");
       (error as unknown as { code: string }).code = "GROQ_INVALID_JSON";
       throw error;
@@ -256,6 +259,7 @@ export async function generateAITravelPlan(options: GeneratePlanOptions): Promis
 
     const validatedPlan = validateStructuredTravelPlan(parsedJson);
     if (!validatedPlan) {
+      console.error(`[Groq AI] Stage: schema_validation | Model: ${model} | Error: Response JSON did not match StructuredTravelPlan schema`);
       const error = new Error("AI response did not conform to required travel plan schema.");
       (error as unknown as { code: string }).code = "GROQ_INVALID_SCHEMA";
       throw error;
@@ -263,10 +267,13 @@ export async function generateAITravelPlan(options: GeneratePlanOptions): Promis
 
     return validatedPlan;
   } catch (err: unknown) {
-    const knownError = err as { code?: string; message?: string };
+    const knownError = err as { code?: string; message?: string; status?: number; type?: string };
     if (knownError.code && knownError.code.startsWith("GROQ_")) {
       throw err;
     }
+    // Safe server-side diagnostic logging (no secrets or auth tokens logged)
+    console.error(`[Groq AI Error] Stage: chat.completions | Model: ${model} | HTTP Status: ${knownError.status || "N/A"} | Error Code: ${knownError.code || "unknown"} | Error Type: ${knownError.type || "unknown"} | Message: ${knownError.message || "unknown"}`);
+    
     // Re-throw sanitized error without exposing API keys or internals
     const sanitizedErr = new Error("Failed to generate travel plan from AI provider.");
     (sanitizedErr as unknown as { code: string }).code = "GROQ_PROVIDER_ERROR";

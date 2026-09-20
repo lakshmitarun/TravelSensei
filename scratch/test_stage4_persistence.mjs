@@ -87,7 +87,8 @@ async function runStage4Tests() {
   // Test 4: Trips & Itineraries Schema Alignment
   // -------------------------------------------------------------
   console.log("\n--- Test 4: Trips & Itineraries Schema Alignment ---");
-  const testUserId = "64398361-4e44-4f35-9fc4-f887dc8d3ea4"; // Existing verified user ID
+  const { data: userRows } = await supabase.from("users").select("id").limit(1);
+  const testUserId = userRows && userRows.length > 0 ? userRows[0].id : "8b72abb1-eed0-4548-b8a8-8e215e92190c";
   const testTripDate = "2026-11-20";
 
   // Simulate trip insertion as performed by POST /api/ai/travel-plan

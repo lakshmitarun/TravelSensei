@@ -268,7 +268,7 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: "AI travel planning service is not configured.",
+            message: "AI travel planning service is temporarily unavailable. Please try again.",
           },
           { status: 503 }
         );
@@ -288,9 +288,9 @@ export async function POST(request: Request) {
         return NextResponse.json(
           {
             success: false,
-            message: "AI provider service error. Please try again later.",
+            message: "AI travel planning service is temporarily unavailable. Please try again.",
           },
-          { status: 502 }
+          { status: 503 }
         );
       }
 
@@ -402,7 +402,7 @@ export async function POST(request: Request) {
         travel_plan: travelPlan,
         itinerary_ids: insertedItineraries.map((it) => it.id),
       },
-      { status: 201 }
+      { status: 200 }
     );
   } catch (error: unknown) {
     console.error("Unexpected error in /api/ai/travel-plan:", error instanceof Error ? error.message : "unknown");

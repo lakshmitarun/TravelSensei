@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createDirectClient } from "@supabase/supabase-js";
 
 export async function POST(request: Request) {
   try {
@@ -60,6 +61,12 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
+    const origin =
+      request.headers.get("origin") ||
+      request.headers.get("referer") ||
+      "http://localhost:3000";
+    const redirectUrl = `${new URL(origin).origin}/auth/confirm`;
+
     // 2. Register user in Supabase Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: email.trim(),
@@ -68,6 +75,7 @@ export async function POST(request: Request) {
         data: {
           full_name: full_name.trim(),
         },
+        emailRedirectTo: redirectUrl,
       },
     });
 
@@ -121,7 +129,18 @@ export async function POST(request: Request) {
     const userEmail = authData.user.email || email.trim();
 
     // 3. Synchronize user profile into public.users using authUserId
-    const { error: dbError } = await supabase
+    const dbClient = createDirectClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+
+    const { error: dbError } = await dbClient
       .from("users")
       .upsert(
         {
@@ -147,6 +166,7 @@ export async function POST(request: Request) {
       {
         success: true,
         message: "User registered successfully.",
+        requireConfirmation: !authData.session,
         user: {
           id: authUserId,
           email: userEmail,

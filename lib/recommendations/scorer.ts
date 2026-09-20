@@ -1,4 +1,4 @@
-import { Destination, RecommendationPreferences, ScoredDestination } from "./types";
+import type { Destination, RecommendationPreferences, ScoredDestination } from "./types";
 
 /**
  * Keyword association map for travel style matching.
