@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 
 export async function GET() {
   try {
+    const supabase = await createClient();
     // Perform a safe read-only query on the existing `users` table
     const { error } = await supabase.from("users").select("id").limit(1);
 
