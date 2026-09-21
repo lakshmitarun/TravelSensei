@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Destination } from "@/lib/recommendations/types";
 import { TravelPlanResponse } from "@/lib/ai/types";
 import TravelPlannerForm, { PlannerFormData } from "./TravelPlannerForm";
@@ -8,6 +9,7 @@ import TravelPlanLoading from "./TravelPlanLoading";
 import TravelPlanResult from "./TravelPlanResult";
 
 export default function TravelPlanner() {
+  const router = useRouter();
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [isLoadingDestinations, setIsLoadingDestinations] = useState<boolean>(true);
   const [destinationsError, setDestinationsError] = useState<string | null>(null);
@@ -60,9 +62,13 @@ export default function TravelPlanner() {
     setApiError(null);
     setPlanResult(null);
 
-    const targetDest = destinations.find((d) => d.id === formData.destination_id);
-    if (targetDest) {
-      setCurrentDestinationName(targetDest.name);
+    const destName =
+      formData.destination_name ||
+      (typeof formData.destination === "string" ? formData.destination : "") ||
+      destinations.find((d) => d.id === formData.destination_id)?.name ||
+      "";
+    if (destName) {
+      setCurrentDestinationName(destName);
     }
 
     try {
@@ -71,7 +77,10 @@ export default function TravelPlanner() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          destination: formData.destination_name || formData.destination || destName,
+        }),
       });
 
       const data = await response.json();
@@ -94,13 +103,9 @@ export default function TravelPlanner() {
 
       setPlanResult(data as TravelPlanResponse);
 
-      // Smooth scroll to results
-      setTimeout(() => {
-        const resultElement = document.getElementById("trip-result");
-        if (resultElement) {
-          resultElement.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 100);
+      // Navigate to My Trips to display the newly saved trip
+      router.push("/my-trips");
+      router.refresh();
     } catch (err: unknown) {
       setApiError("Failed to connect to the travel planning service. Please check your network connection.");
     } finally {

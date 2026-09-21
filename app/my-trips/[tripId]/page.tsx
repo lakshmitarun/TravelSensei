@@ -1,16 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import TravelSenseiLogo from "@/components/TravelSenseiLogo";
-import { TripDetails, TripItem, ItineraryItem } from "@/components/trips";
+import { TripDetails, TripItem, ItineraryItem, DeleteTripDialog } from "@/components/trips";
 import { Destination } from "@/lib/recommendations/types";
 import { Button } from "@/components/ui/button";
 import AccountMenu from "@/components/auth/AccountMenu";
 
 export default function TripDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const tripId = typeof params?.tripId === "string" ? params.tripId : "";
 
   const [trip, setTrip] = useState<TripItem | null>(null);
@@ -21,6 +22,11 @@ export default function TripDetailPage() {
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; full_name?: string | null } | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Deletion state
+  const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tripId) {
@@ -116,6 +122,38 @@ export default function TripDetailPage() {
 
     fetchTripData();
   }, [tripId]);
+
+  // Handle Delete Trip from Details page
+  const handleConfirmDelete = async () => {
+    if (!trip || isDeleting) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch("/api/trips", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: trip.id }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.success) {
+        setShowDeleteDialog(false);
+        // Redirect back to /my-trips as user should not remain on a deleted trip
+        router.push("/my-trips");
+      } else {
+        setDeleteError(data.message || "Failed to delete trip. Please try again.");
+      }
+    } catch (err: unknown) {
+      setDeleteError("Network error while deleting trip. Please check your connection.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="bg-surface font-body-md text-on-surface antialiased min-h-screen flex flex-col">
@@ -220,9 +258,35 @@ export default function TripDetailPage() {
           </div>
         ) : trip ? (
           /* Verified Trip Details */
-          <TripDetails trip={trip} itineraries={itineraries} destination={destination} />
+          <TripDetails
+            trip={trip}
+            itineraries={itineraries}
+            destination={destination}
+            onDeleteTrip={() => {
+              setShowDeleteDialog(true);
+              setDeleteError(null);
+            }}
+            isDeleting={isDeleting}
+          />
         ) : null}
       </main>
+
+      {/* Confirmation Dialog for Delete */}
+      <DeleteTripDialog
+        isOpen={showDeleteDialog}
+        onClose={() => {
+          if (!isDeleting) {
+            setShowDeleteDialog(false);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleConfirmDelete}
+        destinationName={destination?.name || "this trip"}
+        destinationLocation={destination?.state_country}
+        travelDate={trip?.travel_date}
+        isDeleting={isDeleting}
+        errorMessage={deleteError}
+      />
     </div>
   );
 }

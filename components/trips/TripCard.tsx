@@ -19,9 +19,11 @@ export interface TripItem {
 interface TripCardProps {
   trip: TripItem;
   destination?: Destination;
+  onDeleteClick?: (trip: TripItem) => void;
+  isDeleting?: boolean;
 }
 
-export default function TripCard({ trip, destination }: TripCardProps) {
+export default function TripCard({ trip, destination, onDeleteClick, isDeleting }: TripCardProps) {
   const destName = destination?.name || "Travel Destination";
   const destLocation = destination?.state_country || "Confirmed Location";
 
@@ -95,13 +97,27 @@ export default function TripCard({ trip, destination }: TripCardProps) {
       </div>
 
       {/* Action CTA */}
-      <div className="pt-2 border-t border-surface-container-high/40 flex items-center justify-between relative z-10">
-        <span className="text-[11px] text-on-surface-variant/70 font-medium">
-          Saved Itinerary
-        </span>
+      <div className="pt-3 border-t border-surface-container-high/40 flex items-center justify-between gap-3 relative z-10">
+        {onDeleteClick ? (
+          <button
+            type="button"
+            onClick={() => onDeleteClick(trip)}
+            disabled={isDeleting}
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200/60 dark:border-rose-900/30 transition-all cursor-pointer disabled:opacity-50"
+            title="Delete Trip"
+          >
+            <span className="material-symbols-outlined text-[16px]">delete</span>
+            <span>Delete</span>
+          </button>
+        ) : (
+          <span className="text-[11px] text-on-surface-variant/70 font-medium">
+            Saved Itinerary
+          </span>
+        )}
+
         <Link
           href={`/my-trips/${trip.id}`}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold shadow-sm hover:shadow-md transition-all group-hover:translate-x-0.5 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold shadow-sm hover:shadow-md transition-all group-hover:translate-x-0.5 cursor-pointer ml-auto"
         >
           <span>View Trip</span>
           <span className="material-symbols-outlined text-[16px]">arrow_forward</span>

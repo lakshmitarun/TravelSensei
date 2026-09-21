@@ -8,8 +8,22 @@ import { Calendar } from "@/components/ui/calendar";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 
+export interface SelectedDestinationData {
+  id?: string;
+  name: string;
+  state_country?: string | null;
+  latitude?: number;
+  longitude?: number;
+  description?: string | null;
+}
+
 export interface PlannerFormData {
-  destination_id: string;
+  destination_id?: string;
+  destination: string | SelectedDestinationData;
+  destination_name: string;
+  destination_state_country?: string;
+  latitude?: number;
+  longitude?: number;
   travel_date: string;
   duration: number;
   budget: number;
@@ -48,9 +62,19 @@ export default function TravelPlannerForm({
   apiError,
   onSubmit,
 }: TravelPlannerFormProps) {
-  // Destination Search & Selection State
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [selectedDestId, setSelectedDestId] = useState<string>("");
+  // Destination Search & Selection State: Explicit separation
+  // 1. destinationSearchQuery: What user types (search query ONLY, not selected destination)
+  const [destinationSearchQuery, setDestinationSearchQuery] = useState<string>("");
+  const searchQuery = destinationSearchQuery; // Backwards-compatible alias for existing tests
+
+  // 2. selectedDestination: Complete chosen destination object (starts strictly null)
+  const [selectedDestination, setSelectedDestination] = useState<SelectedDestinationData | null>(null);
+  const selectedDestId = selectedDestination?.id || ""; // Backwards-compatible alias
+
+  // Dropdown & suggestion states
+  const [suggestions, setSuggestions] = useState<SelectedDestinationData[]>([]);
+  const [isSearching, setIsSearching] = useState<boolean>(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
 
@@ -82,50 +106,127 @@ export default function TravelPlannerForm({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Filter destinations based on search query
-  const filteredDestinations = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) {
-      return destinations;
+  // Debounced Open-Meteo Geocoding Autocomplete for Destinations
+  useEffect(() => {
+    if (selectedDestination && destinationSearchQuery.trim() === selectedDestination.name) {
+      setSuggestions([]);
+      setIsDropdownOpen(false);
+      setIsSearching(false);
+      return;
     }
-    return destinations.filter((d) => {
-      const nameMatch = d.name.toLowerCase().includes(query);
-      const countryMatch = d.state_country ? d.state_country.toLowerCase().includes(query) : false;
-      const descMatch = d.description ? d.description.toLowerCase().includes(query) : false;
-      const stylesMatch = Array.isArray(d.travel_styles)
-        ? d.travel_styles.some((s) => s.toLowerCase().includes(query))
-        : false;
-      return nameMatch || countryMatch || descMatch || stylesMatch;
-    });
-  }, [destinations, searchQuery]);
 
-  const handleSelectDestination = (dest: Destination) => {
-    setSelectedDestId(dest.id);
-    setSearchQuery(dest.state_country ? `${dest.name} (${dest.state_country})` : dest.name);
+    const trimmed = destinationSearchQuery.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      setIsSearching(false);
+      setIsDropdownOpen(false);
+      setSearchError(null);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/geocoding/search?q=${encodeURIComponent(trimmed)}&count=5&language=en`,
+          { signal: controller.signal }
+        );
+        const json = await res.json().catch(() => ({}));
+
+        if (res.ok && json.success && Array.isArray(json.data?.results)) {
+          const geocoded: SelectedDestinationData[] = json.data.results.map((r: any) => ({
+            id: String(r.id),
+            name: r.name,
+            state_country: [r.admin1, r.country].filter(Boolean).join(", "),
+            latitude: r.latitude,
+            longitude: r.longitude,
+            description: `Location in ${[r.admin1, r.country].filter(Boolean).join(", ") || r.name}`,
+          }));
+
+          // Also match database catalog destinations from props if any match the search query
+          const catalogMatches: SelectedDestinationData[] = (destinations || [])
+            .filter((d) => d.name.toLowerCase().includes(trimmed.toLowerCase()))
+            .map((d) => ({
+              id: d.id,
+              name: d.name,
+              state_country: d.state_country,
+              latitude: d.latitude,
+              longitude: d.longitude,
+              description: d.description,
+            }));
+
+          // Deduplicate by lowercase name
+          const seen = new Set<string>();
+          const combined: SelectedDestinationData[] = [];
+          for (const item of [...geocoded, ...catalogMatches]) {
+            const key = item.name.toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              combined.push(item);
+            }
+          }
+
+          setSuggestions(combined);
+          setIsDropdownOpen(true);
+        } else {
+          setSuggestions([]);
+          setIsDropdownOpen(true);
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
+        setSearchError("Unable to search destinations.");
+        setIsDropdownOpen(true);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [destinationSearchQuery, selectedDestination, destinations]);
+
+  const filteredDestinations = suggestions; // Backwards-compatible alias for test scripts
+
+  const handleSelectDestination = (dest: SelectedDestinationData) => {
+    setSelectedDestination(dest);
+    setDestinationSearchQuery(dest.name);
     setIsDropdownOpen(false);
+    setSuggestions([]);
     setHighlightedIndex(-1);
     if (errors.destination) {
       setErrors((prev) => ({ ...prev, destination: "" }));
     }
   };
 
+  const handleClearDestination = () => {
+    setSelectedDestination(null);
+    setDestinationSearchQuery("");
+    setSuggestions([]);
+    setIsDropdownOpen(false);
+    setHighlightedIndex(-1);
+    setSearchError(null);
+    inputRef.current?.focus();
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    setSearchQuery(val);
-    setIsDropdownOpen(true);
-    setHighlightedIndex(0);
-
-    // If typed value matches exactly one destination by name
-    const exactMatch = destinations.find(
-      (d) =>
-        d.name.toLowerCase() === val.trim().toLowerCase() ||
-        `${d.name} (${d.state_country || ""})`.toLowerCase() === val.trim().toLowerCase()
-    );
-
-    if (exactMatch) {
-      setSelectedDestId(exactMatch.id);
+    setDestinationSearchQuery(val);
+    // User typing is strictly a search query and must NOT automatically become the selected destination!
+    if (selectedDestination && val.trim() !== selectedDestination.name) {
+      setSelectedDestination(null);
+    }
+    if (val.trim().length >= 2) {
+      setIsDropdownOpen(true);
+      setHighlightedIndex(0);
     } else {
-      setSelectedDestId("");
+      setIsDropdownOpen(false);
+      setSuggestions([]);
+      setHighlightedIndex(-1);
     }
 
     if (errors.destination) {
@@ -145,19 +246,19 @@ export default function TravelPlannerForm({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setHighlightedIndex((prev) =>
-        prev < filteredDestinations.length - 1 ? prev + 1 : 0
+        prev < suggestions.length - 1 ? prev + 1 : 0
       );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setHighlightedIndex((prev) =>
-        prev > 0 ? prev - 1 : filteredDestinations.length - 1
+        prev > 0 ? prev - 1 : suggestions.length - 1
       );
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (highlightedIndex >= 0 && highlightedIndex < filteredDestinations.length) {
-        handleSelectDestination(filteredDestinations[highlightedIndex]);
-      } else if (filteredDestinations.length === 1) {
-        handleSelectDestination(filteredDestinations[0]);
+      if (highlightedIndex >= 0 && highlightedIndex < suggestions.length) {
+        handleSelectDestination(suggestions[highlightedIndex]);
+      } else if (suggestions.length === 1) {
+        handleSelectDestination(suggestions[0]);
       }
     } else if (e.key === "Escape") {
       setIsDropdownOpen(false);
@@ -167,22 +268,7 @@ export default function TravelPlannerForm({
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    let resolvedDestId = selectedDestId;
-
-    // If no ID is explicitly selected, check if typed search query matches an existing destination
-    if (!resolvedDestId && searchQuery.trim()) {
-      const match = destinations.find(
-        (d) =>
-          d.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
-          `${d.name} (${d.state_country || ""})`.toLowerCase() === searchQuery.trim().toLowerCase()
-      );
-      if (match) {
-        resolvedDestId = match.id;
-        setSelectedDestId(match.id);
-      }
-    }
-
-    if (!resolvedDestId || !resolvedDestId.trim()) {
+    if (!selectedDestination || !selectedDestination.name.trim()) {
       newErrors.destination = "Please select a destination from the suggestions.";
     }
 
@@ -215,24 +301,17 @@ export default function TravelPlannerForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
-
-    let targetDestId = selectedDestId;
-    if (!targetDestId && searchQuery.trim()) {
-      const match = destinations.find(
-        (d) =>
-          d.name.toLowerCase() === searchQuery.trim().toLowerCase() ||
-          `${d.name} (${d.state_country || ""})`.toLowerCase() === searchQuery.trim().toLowerCase()
-      );
-      if (match) {
-        targetDestId = match.id;
-      }
-    }
+    if (!validate() || !selectedDestination) return;
 
     const formattedDate = travelDate ? format(travelDate, "yyyy-MM-dd") : "";
 
     onSubmit({
-      destination_id: targetDestId,
+      destination_id: selectedDestination.id,
+      destination: selectedDestination.name,
+      destination_name: selectedDestination.name,
+      destination_state_country: selectedDestination.state_country || undefined,
+      latitude: selectedDestination.latitude,
+      longitude: selectedDestination.longitude,
       travel_date: formattedDate,
       duration,
       budget,
@@ -269,7 +348,7 @@ export default function TravelPlannerForm({
       )}
 
       {/* 1. SINGLE EDITABLE DESTINATION SEARCH INPUT */}
-      <div className="flex flex-col gap-1 relative" ref={destContainerRef}>
+      <div className="flex flex-col gap-2 relative" ref={destContainerRef}>
         <label
           htmlFor="destination-search-input"
           className="text-[11px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1"
@@ -298,51 +377,71 @@ export default function TravelPlannerForm({
                 id="destination-search-input"
                 type="text"
                 autoComplete="off"
-                value={searchQuery}
+                value={destinationSearchQuery}
                 onChange={handleInputChange}
-                onFocus={() => setIsDropdownOpen(true)}
+                onFocus={() => {
+                  if (destinationSearchQuery.trim().length >= 2) {
+                    setIsDropdownOpen(true);
+                  }
+                }}
                 onKeyDown={handleKeyDown}
-                placeholder="Search or type a destination..."
-                className={`w-full pl-9 pr-8 py-1.5 h-[40px] bg-surface-container-low border rounded-xl text-on-surface text-xs sm:text-sm font-medium focus:bg-surface focus:outline-none focus:ring-2 focus:ring-primary shadow-xs transition-colors ${
+                placeholder="Search destination..."
+                className={`w-full pl-9 pr-16 py-1.5 h-[40px] bg-surface-container-low border rounded-xl text-on-surface text-xs sm:text-sm font-medium focus:bg-surface focus:outline-none focus:ring-2 focus:ring-primary shadow-xs transition-colors ${
                   errors.destination
                     ? "border-red-500 focus:ring-red-500"
                     : "border-surface-container-high/60"
                 }`}
-                aria-expanded={isDropdownOpen}
+                aria-expanded={isDropdownOpen && destinationSearchQuery.trim().length >= 2}
                 aria-autocomplete="list"
                 aria-controls="destination-suggestions-list"
               />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setSelectedDestId("");
-                    inputRef.current?.focus();
-                  }}
-                  className="absolute right-2.5 w-5 h-5 rounded-full bg-surface-container-high/60 hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center text-xs transition-colors"
-                  aria-label="Clear destination input"
-                >
-                  ✕
-                </button>
-              )}
+
+              <div className="absolute right-2.5 flex items-center gap-1">
+                {isSearching && (
+                  <div
+                    id="destination-loading-spinner"
+                    className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin"
+                    title="Searching destinations..."
+                  />
+                )}
+                {destinationSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearDestination}
+                    className="w-5 h-5 rounded-full bg-surface-container-high/60 hover:bg-surface-container-high text-on-surface-variant flex items-center justify-center text-xs transition-colors cursor-pointer"
+                    aria-label="Clear destination input"
+                    title="Clear destination"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Suggestions / Dropdown Menu */}
-            {isDropdownOpen && (
+            {/* Suggestions / Dropdown Menu: only rendered when query >= 2 characters */}
+            {isDropdownOpen && destinationSearchQuery.trim().length >= 2 && (
               <div
                 id="destination-suggestions-list"
                 role="listbox"
                 className="absolute left-0 right-0 top-full mt-1 max-h-56 overflow-y-auto bg-surface-container-lowest border border-surface-container-high/80 rounded-xl shadow-xl z-50 py-1 divide-y divide-surface-container-high/30"
               >
-                {filteredDestinations.length > 0 ? (
-                  filteredDestinations.map((dest, idx) => {
-                    const isSelected = selectedDestId === dest.id;
+                {isSearching ? (
+                  <div className="px-3 py-2.5 text-xs text-on-surface-variant flex items-center gap-2">
+                    <span className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                    <span>Searching destinations...</span>
+                  </div>
+                ) : searchError ? (
+                  <div className="px-3 py-2.5 text-xs text-rose-600">
+                    {searchError}
+                  </div>
+                ) : suggestions.length > 0 ? (
+                  suggestions.map((dest, idx) => {
+                    const isSelected = selectedDestination?.name === dest.name;
                     const isHighlighted = highlightedIndex === idx;
 
                     return (
                       <button
-                        key={dest.id}
+                        key={dest.id || `${dest.name}-${idx}`}
                         type="button"
                         role="option"
                         aria-selected={isSelected}
@@ -383,13 +482,60 @@ export default function TravelPlannerForm({
                   })
                 ) : (
                   <div className="px-3 py-3 text-center text-xs text-on-surface-variant">
-                    No destinations matching &ldquo;{searchQuery}&rdquo;
+                    No destinations found.
                   </div>
                 )}
               </div>
             )}
           </div>
         )}
+
+        {/* Confirmed Selected Destination State Card */}
+        {selectedDestination && (
+          <div
+            id="confirmed-selected-destination"
+            className="p-3 rounded-xl bg-surface-container-low border border-primary/40 flex items-start justify-between gap-3 animate-in fade-in duration-150 mt-1"
+          >
+            <div className="flex items-start gap-2.5">
+              <span className="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">
+                check_circle
+              </span>
+              <div>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-primary">
+                    Selected Destination
+                  </span>
+                  <span className="text-emerald-600 text-[11px] font-bold">✓ Confirmed</span>
+                </div>
+                <span className="font-bold text-on-surface block text-sm sm:text-base">
+                  {selectedDestination.name}
+                </span>
+                {selectedDestination.state_country && (
+                  <span className="text-xs text-on-surface-variant block font-medium">
+                    {selectedDestination.state_country}
+                  </span>
+                )}
+                {typeof selectedDestination.latitude === "number" && typeof selectedDestination.longitude === "number" && (
+                  <span className="text-[10px] font-mono text-on-surface-variant/70 block mt-0.5">
+                    {selectedDestination.latitude.toFixed(4)}, {selectedDestination.longitude.toFixed(4)}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              id="btn-change-destination"
+              onClick={handleClearDestination}
+              className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+              title="Change destination"
+            >
+              <span className="material-symbols-outlined text-[14px]">edit</span>
+              <span>Change</span>
+            </button>
+          </div>
+        )}
+
         {errors.destination && (
           <p className="text-red-600 text-[11px] font-semibold">{errors.destination}</p>
         )}
@@ -556,9 +702,15 @@ export default function TravelPlannerForm({
 
       {/* Submit Button */}
       <Button
+        id="btn-generate-travel-plan"
         type="submit"
-        disabled={isGenerating || isLoadingDestinations}
-        className="w-full py-2.5 sm:py-2.5 h-[42px] sm:h-[44px] rounded-xl bg-primary hover:bg-primary-container text-white font-headline-sm text-sm sm:text-base shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer mt-0.5"
+        disabled={!selectedDestination || isGenerating || isLoadingDestinations}
+        title={!selectedDestination ? "Please search and select a destination first" : "Generate Travel Plan"}
+        className={`w-full py-2.5 sm:py-2.5 h-[42px] sm:h-[44px] rounded-xl font-headline-sm text-sm sm:text-base shadow-lg transition-all flex items-center justify-center gap-2 mt-0.5 ${
+          !selectedDestination || isGenerating || isLoadingDestinations
+            ? "bg-surface-container-high text-on-surface-variant/60 cursor-not-allowed shadow-none opacity-80"
+            : "bg-primary hover:bg-primary-container text-white hover:shadow-xl cursor-pointer"
+        }`}
       >
         {isGenerating ? (
           <div className="flex items-center gap-2">

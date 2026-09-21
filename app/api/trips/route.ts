@@ -319,11 +319,16 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // 2. Parse request body
-    const body = await request.json().catch(() => ({}));
-    const { id } = body;
+    // 2. Parse trip ID from search params or JSON body
+    const { searchParams } = new URL(request.url);
+    let id: string | null = searchParams.get("id") || searchParams.get("trip_id");
 
     if (!id) {
+      const body = await request.json().catch(() => ({}));
+      id = (body?.id || body?.trip_id || null) as string | null;
+    }
+
+    if (!id || typeof id !== "string" || id.trim() === "") {
       return NextResponse.json(
         {
           success: false,

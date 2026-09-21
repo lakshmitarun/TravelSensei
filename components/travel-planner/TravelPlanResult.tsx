@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { TravelPlanResponse } from "@/lib/ai/types";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -49,7 +50,32 @@ export default function TravelPlanResult({ data, onReset }: TravelPlanResultProp
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {trip?.id && (
+              <>
+                <Link
+                  href={`/my-trips/${trip.id}#trip-flights`}
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm rounded-xl px-5 py-2.5 transition-all flex items-center gap-2 shadow-md"
+                >
+                  <span className="material-symbols-outlined text-[18px]">flight</span>
+                  <span>Find Flights</span>
+                </Link>
+                <Link
+                  href={`/my-trips/${trip.id}#trip-trains`}
+                  className="bg-primary hover:bg-primary-container text-white font-bold text-sm rounded-xl px-5 py-2.5 transition-all flex items-center gap-2 shadow-md border border-white/20"
+                >
+                  <span className="material-symbols-outlined text-[18px]">train</span>
+                  <span>Find Trains</span>
+                </Link>
+              </>
+            )}
+            <Link
+              href="/my-trips"
+              className="bg-white hover:bg-white/90 text-primary font-bold text-sm rounded-xl px-5 py-2.5 transition-all flex items-center gap-2 shadow-md"
+            >
+              <span className="material-symbols-outlined text-[18px]">luggage</span>
+              <span>Go to My Trips</span>
+            </Link>
             <Button
               onClick={onReset}
               variant="outline"
@@ -263,13 +289,22 @@ export default function TravelPlanResult({ data, onReset }: TravelPlanResultProp
           <span className="material-symbols-outlined text-emerald-600 text-[18px]">verified</span>
           <span>This plan is stored in your account database under Ref #{trip?.id ? trip.id.slice(0, 8) : "SAVED"}.</span>
         </div>
-        <Button
-          onClick={onReset}
-          className="bg-primary hover:bg-primary-container text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2"
-        >
-          <span>Plan Another Trip</span>
-          <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-        </Button>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/my-trips"
+            className="bg-surface-container hover:bg-surface-container-high text-on-surface font-semibold text-sm px-5 py-2.5 rounded-xl border border-surface-container-high/60 transition-all flex items-center gap-2"
+          >
+            <span className="material-symbols-outlined text-[18px]">luggage</span>
+            <span>Go to My Trips</span>
+          </Link>
+          <Button
+            onClick={onReset}
+            className="bg-primary hover:bg-primary-container text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2"
+          >
+            <span>Plan Another Trip</span>
+            <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+          </Button>
+        </div>
       </div>
     </div>
   );

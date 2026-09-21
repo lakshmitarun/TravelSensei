@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import TravelSenseiLogo from "@/components/TravelSenseiLogo";
-import { TripCard, TripItem } from "@/components/trips";
+import { TripCard, TripItem, DeleteTripDialog } from "@/components/trips";
 import { Destination } from "@/lib/recommendations/types";
 import { Button } from "@/components/ui/button";
 import AccountMenu from "@/components/auth/AccountMenu";
@@ -15,6 +15,12 @@ export default function MyTripsPage() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [currentUser, setCurrentUser] = useState<{ id: string; email: string; full_name?: string | null } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Deletion state
+  const [selectedTripToDelete, setSelectedTripToDelete] = useState<TripItem | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [successNotification, setSuccessNotification] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -76,6 +82,51 @@ export default function MyTripsPage() {
     loadData();
   }, []);
 
+  // Handle Delete Trip Confirmation
+  const handleConfirmDelete = async () => {
+    if (!selectedTripToDelete || isDeleting) return;
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    const tripId = selectedTripToDelete.id;
+    const destName = destinationsMap[selectedTripToDelete.destination_id]?.name || "Trip";
+
+    try {
+      const res = await fetch("/api/trips", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: tripId }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.success) {
+        // Optimistically remove from state
+        setTrips((prev) => prev.filter((t) => t.id !== tripId));
+        setSelectedTripToDelete(null);
+        setSuccessNotification(`Successfully deleted trip to ${destName}.`);
+
+        // Auto dismiss success banner after 4 seconds
+        setTimeout(() => {
+          setSuccessNotification((prev) => (prev?.includes(destName) ? null : prev));
+        }, 4000);
+      } else {
+        setDeleteError(data.message || "Failed to delete trip. Please try again.");
+      }
+    } catch (err: unknown) {
+      setDeleteError("Network error while deleting trip. Please check your connection.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const activeDeleteDest = selectedTripToDelete
+    ? destinationsMap[selectedTripToDelete.destination_id]
+    : undefined;
+
   return (
     <div className="bg-surface font-body-md text-on-surface antialiased min-h-screen flex flex-col">
       {/* 1. TOP NAVBAR */}
@@ -118,6 +169,22 @@ export default function MyTripsPage() {
 
       {/* 2. MAIN CONTENT */}
       <main className="w-full pt-28 pb-20 flex-1 max-w-[1440px] mx-auto px-6 sm:px-12 flex flex-col gap-8">
+        {/* Success Notification Banner */}
+        {successNotification && (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-4 text-emerald-900 text-sm shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center gap-3">
+              <span className="material-symbols-outlined text-emerald-600 text-xl">check_circle</span>
+              <span className="font-semibold">{successNotification}</span>
+            </div>
+            <button
+              onClick={() => setSuccessNotification(null)}
+              className="text-emerald-700 hover:text-emerald-900 text-xs font-bold cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
         {/* Loading State */}
         {isLoading ? (
           <div className="w-full py-24 flex flex-col items-center justify-center gap-4 text-center">
@@ -219,12 +286,35 @@ export default function MyTripsPage() {
                   key={trip.id}
                   trip={trip}
                   destination={destinationsMap[trip.destination_id]}
+                  onDeleteClick={(t) => {
+                    setSelectedTripToDelete(t);
+                    setDeleteError(null);
+                  }}
+                  isDeleting={isDeleting && selectedTripToDelete?.id === trip.id}
                 />
               ))}
             </div>
           </div>
         )}
       </main>
+
+      {/* Confirmation Dialog for Delete */}
+      <DeleteTripDialog
+        isOpen={!!selectedTripToDelete}
+        onClose={() => {
+          if (!isDeleting) {
+            setSelectedTripToDelete(null);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleConfirmDelete}
+        destinationName={activeDeleteDest?.name || "this trip"}
+        destinationLocation={activeDeleteDest?.state_country}
+        travelDate={selectedTripToDelete?.travel_date}
+        isDeleting={isDeleting}
+        errorMessage={deleteError}
+      />
     </div>
   );
 }
+

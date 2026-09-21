@@ -70,9 +70,52 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Validate destination_id
-    const destinationId = body.destination_id;
-    if (!destinationId || typeof destinationId !== "string" || !destinationId.trim()) {
+    // 3. Validate destination_id or destination
+    let destinationName = "";
+    let destinationStateCountry = "";
+    let destinationLat: number | undefined;
+    let destinationLng: number | undefined;
+
+    if (typeof body.destination === "string" && body.destination.trim()) {
+      destinationName = body.destination.trim();
+    } else if (body.destination && typeof body.destination === "object") {
+      const dObj = body.destination as Record<string, unknown>;
+      if (typeof dObj.name === "string") destinationName = dObj.name.trim();
+      if (typeof dObj.state_country === "string") destinationStateCountry = dObj.state_country.trim();
+      if (typeof dObj.latitude === "number") destinationLat = dObj.latitude;
+      if (typeof dObj.longitude === "number") destinationLng = dObj.longitude;
+    } else if (typeof body.destination_name === "string" && body.destination_name.trim()) {
+      destinationName = body.destination_name.trim();
+    }
+
+    if (typeof body.destination_state_country === "string" && body.destination_state_country.trim()) {
+      destinationStateCountry = body.destination_state_country.trim();
+    }
+    if (typeof body.latitude === "number" && isFinite(body.latitude)) {
+      destinationLat = body.latitude;
+    }
+    if (typeof body.longitude === "number" && isFinite(body.longitude)) {
+      destinationLng = body.longitude;
+    }
+
+    const rawDestinationId = body.destination_id;
+    let cleanDestinationId: string | null = null;
+
+    if (typeof rawDestinationId === "string" && rawDestinationId.trim()) {
+      if (UUID_REGEX.test(rawDestinationId.trim())) {
+        cleanDestinationId = rawDestinationId.trim();
+      } else if (!destinationName) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Invalid destination_id format. Must be a valid UUID.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (!cleanDestinationId && !destinationName) {
       return NextResponse.json(
         {
           success: false,
@@ -81,18 +124,6 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-
-    if (!UUID_REGEX.test(destinationId.trim())) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid destination_id format. Must be a valid UUID.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const cleanDestinationId = destinationId.trim();
 
     // 4. Validate travel_date
     const travelDate = body.travel_date;
@@ -177,37 +208,50 @@ export async function POST(request: Request) {
       reqSeason = body.season.trim();
     }
 
-    // 5. Retrieve destination from database
-    const { data: destinationData, error: destError } = await supabase
-      .from("destinations")
-      .select("id, name, state_country, description, latitude, longitude, travel_styles, budget_level, destination_type, ideal_duration, activities, best_season, created_at")
-      .eq("id", cleanDestinationId)
-      .maybeSingle();
+    // 5. Retrieve destination from database (by ID or name)
+    let destination: Destination | null = null;
 
-    let destination: Destination | null = destinationData as Destination | null;
+    if (cleanDestinationId) {
+      const { data: destinationData, error: destError } = await supabase
+        .from("destinations")
+        .select("id, name, state_country, description, latitude, longitude, created_at")
+        .eq("id", cleanDestinationId)
+        .maybeSingle();
 
-    if (destError) {
-      if (destError.message.includes("does not exist") || destError.code === "42703") {
-        const { data: fbData, error: fbErr } = await supabase
-          .from("destinations")
-          .select("id, name, state_country, description, latitude, longitude, created_at")
-          .eq("id", cleanDestinationId)
-          .maybeSingle();
+      if (!destError && destinationData) {
+        destination = destinationData as Destination;
+      }
+    }
 
-        if (fbErr) {
-          console.error("Supabase destination lookup fallback error:", fbErr.message);
-          return NextResponse.json(
-            { success: false, message: "Failed to fetch destination from database." },
-            { status: 500 }
-          );
-        }
-        destination = fbData as Destination | null;
+    if (!destination && destinationName) {
+      // Look up destination in database by name
+      const { data: matchedByName } = await supabase
+        .from("destinations")
+        .select("id, name, state_country, description, latitude, longitude, created_at")
+        .ilike("name", destinationName)
+        .maybeSingle();
+
+      if (matchedByName) {
+        destination = matchedByName as Destination;
       } else {
-        console.error("Supabase destination lookup error:", destError.message);
-        return NextResponse.json(
-          { success: false, message: "Failed to fetch destination from database." },
-          { status: 500 }
-        );
+        // Create new destination entry in database so it can be saved and linked to user trips
+        const { data: createdDest, error: insertError } = await supabase
+          .from("destinations")
+          .insert({
+            name: destinationName,
+            state_country: destinationStateCountry || null,
+            description: `Curated destination for ${destinationName}`,
+            latitude: typeof destinationLat === "number" && isFinite(destinationLat) ? destinationLat : 0,
+            longitude: typeof destinationLng === "number" && isFinite(destinationLng) ? destinationLng : 0,
+          })
+          .select("id, name, state_country, description, latitude, longitude, created_at")
+          .single();
+
+        if (!insertError && createdDest) {
+          destination = createdDest as Destination;
+        } else if (insertError) {
+          console.error("Failed to insert new destination:", insertError.message);
+        }
       }
     }
 
@@ -333,7 +377,7 @@ export async function POST(request: Request) {
       .from("trips")
       .insert({
         user_id: user.id,
-        destination_id: cleanDestinationId,
+        destination_id: destination.id,
         travel_date: cleanTravelDate,
         budget: effectiveBudget !== undefined ? Math.round(effectiveBudget) : 0,
         travel_style: effectiveTravelStyle || "general",
