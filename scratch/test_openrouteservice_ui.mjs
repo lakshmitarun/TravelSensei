@@ -157,10 +157,13 @@ async function runOrsUITestSuite() {
   logPass("21. Responsive map container exists with defined heights and boundaries");
 
   assert(
-    routeMapCode.includes("tile.openstreetmap.org") && routeMapCode.includes("OpenStreetMap"),
-    "OpenStreetMap tiles and attribution exist"
+    routeMapCode.includes("https://tile.openstreetmap.org/{z}/{x}/{y}.png") &&
+    routeMapCode.includes("OpenStreetMap") &&
+    !routeMapCode.includes("basemaps.cartocdn.com") &&
+    !routeMapCode.includes("carto.com"),
+    "OpenStreetMap tiles and attribution exist without CARTO"
   );
-  logPass("22. OpenStreetMap tile layer and OSM attribution exist");
+  logPass("22. OpenStreetMap tile layer and OSM attribution exist without CARTO dependency");
 
   const tripDetailsPath = path.resolve("components/trips/TripDetails.tsx");
   const tripDetailsCode = fs.readFileSync(tripDetailsPath, "utf-8");

@@ -215,16 +215,18 @@ async function runGeocodingRoutePlannerUITests() {
   );
   logPass("25. No API credentials are exposed");
 
-  // 26: English-oriented CARTO basemap tile layer in RouteMap
+  // 26: Official OpenStreetMap standard tile layer in RouteMap (no CARTO dependency)
   const routeMapPath = path.resolve("components/maps/RouteMap.tsx");
   assert(fs.existsSync(routeMapPath), "RouteMap.tsx must exist");
   const routeMapCode = fs.readFileSync(routeMapPath, "utf-8");
   assert(
-    routeMapCode.includes("basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png") &&
-    routeMapCode.includes("carto.com/attributions"),
-    "26. RouteMap uses English-oriented CARTO basemap tiles with proper CARTO & OpenStreetMap attribution"
+    routeMapCode.includes("https://tile.openstreetmap.org/{z}/{x}/{y}.png") &&
+    routeMapCode.includes("OpenStreetMap") &&
+    !routeMapCode.includes("basemaps.cartocdn.com") &&
+    !routeMapCode.includes("carto.com"),
+    "26. RouteMap uses official OpenStreetMap standard tile layer without CARTO dependency or API key requirements"
   );
-  logPass("26. English-oriented CARTO basemap tile layer with attribution exists");
+  logPass("26. Official OpenStreetMap standard tile layer with attribution exists (no CARTO)");
 
   // 27: Initial origin state is empty (no auto-fill)
   assert(

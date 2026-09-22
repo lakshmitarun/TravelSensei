@@ -83,7 +83,34 @@ export default function RouteMap({
     if (typeof window === "undefined" || !mapContainerRef.current) return;
 
     let isMounted = true;
-    let activeMap: L.Map | null = null;
+
+    // Helper to safely and idempotently clean up Leaflet map and DOM container
+    const cleanupMap = () => {
+      // 1. Clean up existing Leaflet Map instance safely without double-remove
+      if (mapInstanceRef.current) {
+        const existingMap = mapInstanceRef.current;
+        mapInstanceRef.current = null;
+        try {
+          existingMap.remove();
+        } catch {
+          // Safe and idempotent: ignore if already removed or errored
+        }
+      }
+
+      // 2. Ensure container is reset and any residual Leaflet metadata or nodes are cleared
+      const container = mapContainerRef.current;
+      if (container) {
+        const containerWithId = container as unknown as { _leaflet_id?: unknown };
+        if (containerWithId._leaflet_id !== undefined) {
+          try {
+            delete containerWithId._leaflet_id;
+          } catch {
+            containerWithId._leaflet_id = undefined;
+          }
+        }
+        container.innerHTML = "";
+      }
+    };
 
     // Dynamically import Leaflet and its stylesheet strictly on the client
     Promise.all([import("leaflet"), import("leaflet/dist/leaflet.css")]).then(([leafletModule]) => {
@@ -91,11 +118,10 @@ export default function RouteMap({
 
       const L = (leafletModule.default || leafletModule) as typeof import("leaflet");
 
-      // Clean up previous map instance if one exists
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+      // Before creating a map, check whether the container already has a Leaflet instance and safely clean it up
+      cleanupMap();
+
+      if (!isMounted || !mapContainerRef.current) return;
 
       // Initialize Leaflet Map centered on origin
       const map = L.map(mapContainerRef.current, {
@@ -104,20 +130,18 @@ export default function RouteMap({
         zoomControl: true,
         scrollWheelZoom: false, // Prevent accidental scrolling when browsing trip
       });
-      activeMap = map;
       mapInstanceRef.current = map;
 
-      // Add English-oriented CARTO basemap tiles (replaces tile.openstreetmap.org for English labels)
-      const cartoLayer = L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+      // Add official OpenStreetMap standard tile layer
+      const osmLayer = L.tileLayer(
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
         {
-          maxZoom: 20,
-          subdomains: "abcd",
           attribution:
-            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noopener noreferrer">CARTO</a>',
+            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+          maxZoom: 19,
         }
       );
-      cartoLayer.addTo(map);
+      osmLayer.addTo(map);
 
       // Prepare bounds tracking
       const bounds = L.latLngBounds([
@@ -171,18 +195,20 @@ export default function RouteMap({
       });
     });
 
-    // Cleanup on component unmount
+    // Cleanup on component unmount or effect re-run
     return () => {
       isMounted = false;
-      if (activeMap) {
-        activeMap.remove();
-      }
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+      cleanupMap();
     };
-  }, [origin, destination, geometry, originLabel, destinationLabel]);
+  }, [
+    origin.latitude,
+    origin.longitude,
+    destination.latitude,
+    destination.longitude,
+    geometry,
+    originLabel,
+    destinationLabel,
+  ]);
 
   return (
     <div className={`relative w-full rounded-2xl overflow-hidden border border-surface-container-high/60 shadow-xs ${className}`}>
