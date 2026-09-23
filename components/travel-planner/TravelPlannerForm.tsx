@@ -131,20 +131,25 @@ export default function TravelPlannerForm({
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(
-          `/api/geocoding/search?q=${encodeURIComponent(trimmed)}&count=5&language=en`,
+          `/api/geocoding/search?q=${encodeURIComponent(trimmed)}&count=10&language=en`,
           { signal: controller.signal }
         );
         const json = await res.json().catch(() => ({}));
 
         if (res.ok && json.success && Array.isArray(json.data?.results)) {
-          const geocoded: SelectedDestinationData[] = json.data.results.map((r: any) => ({
-            id: String(r.id),
-            name: r.name,
-            state_country: [r.admin1, r.country].filter(Boolean).join(", "),
-            latitude: r.latitude,
-            longitude: r.longitude,
-            description: `Location in ${[r.admin1, r.country].filter(Boolean).join(", ") || r.name}`,
-          }));
+          const geocoded: SelectedDestinationData[] = json.data.results.map((r: any) => {
+            const stateCountryParts = [r.admin1, r.country].filter(Boolean);
+            const stateCountry = Array.from(new Set(stateCountryParts)).join(", ");
+
+            return {
+              id: String(r.id),
+              name: r.name,
+              state_country: stateCountry || r.country || null,
+              latitude: r.latitude,
+              longitude: r.longitude,
+              description: stateCountry || r.country || r.name,
+            };
+          });
 
           // Also match database catalog destinations from props if any match the search query
           const catalogMatches: SelectedDestinationData[] = (destinations || [])
@@ -155,14 +160,14 @@ export default function TravelPlannerForm({
               state_country: d.state_country,
               latitude: d.latitude,
               longitude: d.longitude,
-              description: d.description,
+              description: d.description || d.state_country || d.name,
             }));
 
-          // Deduplicate by lowercase name
+          // Deduplicate by composite key (name + state_country) to preserve distinct geographic places
           const seen = new Set<string>();
           const combined: SelectedDestinationData[] = [];
           for (const item of [...geocoded, ...catalogMatches]) {
-            const key = item.name.toLowerCase();
+            const key = `${item.name.toLowerCase()}:${(item.state_country || "").toLowerCase()}`;
             if (!seen.has(key)) {
               seen.add(key);
               combined.push(item);
@@ -436,7 +441,10 @@ export default function TravelPlannerForm({
                   </div>
                 ) : suggestions.length > 0 ? (
                   suggestions.map((dest, idx) => {
-                    const isSelected = selectedDestination?.name === dest.name;
+                    const isSelected =
+                      selectedDestination?.id === dest.id ||
+                      (selectedDestination?.name === dest.name &&
+                        selectedDestination?.state_country === dest.state_country);
                     const isHighlighted = highlightedIndex === idx;
 
                     return (
@@ -456,19 +464,12 @@ export default function TravelPlannerForm({
                         }`}
                       >
                         <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs sm:text-sm font-bold">
-                              {dest.name}
-                            </span>
-                            {dest.state_country && (
-                              <span className="text-[11px] text-on-surface-variant">
-                                ({dest.state_country})
-                              </span>
-                            )}
-                          </div>
-                          {dest.description && (
-                            <span className="text-[10px] text-on-surface-variant/80 line-clamp-1">
-                              {dest.description}
+                          <span className="text-xs sm:text-sm font-bold text-on-surface">
+                            {dest.name}
+                          </span>
+                          {dest.state_country && (
+                            <span className="text-[11px] text-on-surface-variant font-normal">
+                              {dest.state_country}
                             </span>
                           )}
                         </div>

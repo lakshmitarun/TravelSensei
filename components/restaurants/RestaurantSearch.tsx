@@ -54,6 +54,7 @@ export default function RestaurantSearch({
 
   // Modal & Directions state
   const [selectedRestaurant, setSelectedRestaurant] = useState<RestaurantItem | null>(null);
+  const [selectedRestaurantPhotoUrl, setSelectedRestaurantPhotoUrl] = useState<string | null>(null);
   const [directionsRestaurant, setDirectionsRestaurant] = useState<RestaurantItem | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -587,7 +588,10 @@ export default function RestaurantSearch({
           restaurants={restaurants}
           radiusMeters={radius}
           onExpandRadius={handleExpandRadius}
-          onViewDetails={(restaurant) => setSelectedRestaurant(restaurant)}
+          onViewDetails={(restaurant, photoUrl) => {
+            setSelectedRestaurant(restaurant);
+            setSelectedRestaurantPhotoUrl(photoUrl ?? null);
+          }}
           onGetDirections={handleOpenDirections}
         />
       )}
@@ -595,7 +599,11 @@ export default function RestaurantSearch({
       {/* Restaurant Detail Modal */}
       <RestaurantDetailModal
         restaurant={selectedRestaurant}
-        onClose={() => setSelectedRestaurant(null)}
+        photoUrl={selectedRestaurantPhotoUrl}
+        onClose={() => {
+          setSelectedRestaurant(null);
+          setSelectedRestaurantPhotoUrl(null);
+        }}
         onGetDirections={handleOpenDirections}
       />
 

@@ -2,10 +2,11 @@
 
 import React, { useState } from "react";
 import { RestaurantItem } from "@/lib/restaurants/types";
+import RestaurantPhoto from "./RestaurantPhoto";
 
 export interface RestaurantCardProps {
   restaurant: RestaurantItem;
-  onViewDetails?: (restaurant: RestaurantItem) => void;
+  onViewDetails?: (restaurant: RestaurantItem, photoUrl?: string | null) => void;
   onGetDirections?: (restaurant: RestaurantItem) => void;
   className?: string;
 }
@@ -50,6 +51,7 @@ export default function RestaurantCard({
   className = "",
 }: RestaurantCardProps) {
   const [imageError, setImageError] = useState(false);
+  const [loadedPhotoUrl, setLoadedPhotoUrl] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const cardElementId = `restaurant-card-${restaurant.id.replace(/[/:]/g, "-")}`;
@@ -113,7 +115,7 @@ export default function RestaurantCard({
       className={`bg-surface-container-low rounded-2xl border border-surface-container-high/60 hover:border-primary/40 transition-all duration-200 shadow-xs flex flex-col justify-between overflow-hidden group ${className}`}
     >
       <div className="flex flex-col">
-        {/* Restaurant Photo Header or Clean Fallback Illustration */}
+        {/* Restaurant Photo Header or Representative Pexels Photo */}
         <div className="relative w-full h-36 sm:h-40 bg-surface-container-high/30 overflow-hidden shrink-0">
           {hasPhoto ? (
             <img
@@ -124,11 +126,16 @@ export default function RestaurantCard({
               loading="lazy"
             />
           ) : (
+            <RestaurantPhoto
+              restaurant={restaurant}
+              onPhotoLoaded={(url) => setLoadedPhotoUrl(url)}
+            />
+          )}
+
+          {/* Clean fallback indicator for tests and error states */}
+          {imageError && (
             <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-surface-container to-surface-container-high/20 text-primary">
               <span className="material-symbols-outlined text-[36px] text-primary/70">restaurant</span>
-              <span className="text-[11px] font-semibold text-on-surface-variant/80 mt-1">
-                {restaurant.cuisine ? formatCuisine(restaurant.cuisine).split("·")[0] : "Local Dining"}
-              </span>
               <span className="text-[10px] text-on-surface-variant/60 font-medium">No photo available</span>
             </div>
           )}
@@ -251,28 +258,45 @@ export default function RestaurantCard({
         </div>
       </div>
 
-      {/* Footer Action Buttons: [ View Details ] [ Directions ] */}
-      <div className="p-4 pt-0 flex items-center gap-2 border-t border-surface-container-high/30 mt-1">
-        <button
-          type="button"
-          id={`btn-details-${restaurant.id.replace(/[/:]/g, "-")}`}
-          onClick={() => onViewDetails?.(restaurant)}
-          className="flex-1 px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container-high/70 hover:bg-surface-container text-on-surface text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-          aria-label={`View details for ${restaurant.name}`}
-        >
-          <span className="material-symbols-outlined text-[16px] text-primary">visibility</span>
-          <span>View Details</span>
-        </button>
+      {/* Footer Action Buttons: [ View Details ] [ Get Directions ] [ Open in Google Maps ] */}
+      <div className="p-4 pt-0 flex flex-col gap-2 border-t border-surface-container-high/30 mt-1">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            id={`btn-details-${restaurant.id.replace(/[/:]/g, "-")}`}
+            onClick={() => onViewDetails?.(restaurant, loadedPhotoUrl)}
+            className="flex-1 px-3 py-2 rounded-xl bg-surface-container-lowest border border-surface-container-high/70 hover:bg-surface-container text-on-surface text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs focus-visible:outline-2 focus-visible:outline-primary"
+            aria-label={`View details for ${restaurant.name}`}
+          >
+            <span className="material-symbols-outlined text-[16px] text-primary">visibility</span>
+            <span>View Details</span>
+          </button>
+
+          <button
+            type="button"
+            id={`btn-directions-${restaurant.id.replace(/[/:]/g, "-")}`}
+            onClick={() => onGetDirections?.(restaurant)}
+            className="flex-1 px-3 py-2 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs focus-visible:outline-2 focus-visible:outline-primary"
+            title="Preview route in TravelSensei"
+            aria-label={`Get directions to ${restaurant.name} in TravelSensei`}
+          >
+            <span className="material-symbols-outlined text-[16px]">directions</span>
+            <span>Get Directions</span>
+          </button>
+        </div>
 
         <button
           type="button"
-          id={`btn-directions-${restaurant.id.replace(/[/:]/g, "-")}`}
-          onClick={() => onGetDirections?.(restaurant)}
-          className="flex-1 px-3 py-2 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-          aria-label={`Get directions to ${restaurant.name}`}
+          id={`btn-google-maps-${restaurant.id.replace(/[/:]/g, "-")}`}
+          onClick={handleOpenGoogleMaps}
+          disabled={isLocating}
+          className="w-full px-3 py-1.5 rounded-xl bg-surface-container-lowest border border-surface-container-high/70 hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-primary"
+          title="Navigate with Google Maps from your current location"
+          aria-label={`Open ${restaurant.name} in Google Maps`}
         >
-          <span className="material-symbols-outlined text-[16px]">directions</span>
-          <span>Directions</span>
+          <span className="material-symbols-outlined text-[16px] text-primary">map</span>
+          <span>{isLocating ? "Getting Location..." : "Open in Google Maps"}</span>
+          <span className="material-symbols-outlined text-[13px] opacity-60">open_in_new</span>
         </button>
       </div>
     </div>

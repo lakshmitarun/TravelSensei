@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import TripPhoto from "./TripPhoto";
 
 export interface ActivityItem {
   time?: string;
@@ -23,9 +24,10 @@ export interface ItineraryItem {
 
 interface ItineraryDayProps {
   itinerary: ItineraryItem;
+  destinationName?: string;
 }
 
-export default function ItineraryDay({ itinerary }: ItineraryDayProps) {
+export default function ItineraryDay({ itinerary, destinationName = "" }: ItineraryDayProps) {
   const schedule = itinerary.schedule_data || {};
   const title = schedule.title || `Day ${itinerary.day_number} Itinerary`;
   const activities: ActivityItem[] = Array.isArray(schedule.activities) ? schedule.activities : [];
@@ -64,21 +66,32 @@ export default function ItineraryDay({ itinerary }: ItineraryDayProps) {
             return (
               <div
                 key={idx}
-                className="bg-surface-container-low/70 rounded-2xl p-4 sm:p-5 flex flex-col gap-2 border border-surface-container-high/40 hover:bg-surface-container-low transition-colors"
+                className="bg-surface-container-low/70 rounded-2xl overflow-hidden flex flex-col border border-surface-container-high/40 hover:bg-surface-container-low transition-colors"
               >
-                <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-extrabold uppercase tracking-wide">
-                    {timeSlot}
-                  </span>
+                {/* Activity Top Photo */}
+                <div className="h-32 sm:h-36 w-full relative">
+                  <TripPhoto
+                    type="activity"
+                    activityTitle={actTitle}
+                    destination={destinationName}
+                  />
                 </div>
-                <h5 className="font-bold text-sm sm:text-base text-on-surface">
-                  {actTitle}
-                </h5>
-                {actDesc && (
-                  <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed">
-                    {actDesc}
-                  </p>
-                )}
+
+                <div className="p-4 sm:p-5 flex flex-col gap-2 flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-extrabold uppercase tracking-wide">
+                      {timeSlot}
+                    </span>
+                  </div>
+                  <h5 className="font-bold text-sm sm:text-base text-on-surface">
+                    {actTitle}
+                  </h5>
+                  {actDesc && (
+                    <p className="text-xs sm:text-sm text-on-surface-variant leading-relaxed">
+                      {actDesc}
+                    </p>
+                  )}
+                </div>
               </div>
             );
           })}

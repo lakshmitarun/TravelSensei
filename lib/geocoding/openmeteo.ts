@@ -9,6 +9,7 @@ import {
   GeocodingSearchResult,
   GeocodingSearchParams,
 } from "./types";
+import { findRegionalDestinations } from "./regions";
 
 export class OpenMeteoGeocodingError extends Error {
   public status: number;
@@ -49,6 +50,88 @@ interface RawOpenMeteoResponse {
 const DEFAULT_BASE_URL = "https://geocoding-api.open-meteo.com";
 const DEFAULT_TIMEOUT_MS = 8000;
 
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  india: "IN",
+  finland: "FI",
+  france: "FR",
+  japan: "JP",
+  usa: "US",
+  "united states": "US",
+  uk: "GB",
+  "united kingdom": "GB",
+  germany: "DE",
+  italy: "IT",
+  spain: "ES",
+  canada: "CA",
+  australia: "AU",
+  indonesia: "ID",
+  thailand: "TH",
+  greece: "GR",
+  afghanistan: "AF",
+  kazakhstan: "KZ",
+  china: "CN",
+  russia: "RU",
+  brazil: "BR",
+  mexico: "MX",
+  singapore: "SG",
+  malaysia: "MY",
+  vietnam: "VN",
+  egypt: "EG",
+  turkey: "TR",
+  switzerland: "CH",
+};
+
+/**
+ * Parses user input into base location query and optional country filter hint.
+ * Example: "Kerala India" -> { baseQuery: "Kerala", countryHint: "india", countryCodeHint: "IN" }
+ * Example: "Kerala Finland" -> { baseQuery: "Kerala", countryHint: "finland", countryCodeHint: "FI" }
+ * Example: "Paris France" -> { baseQuery: "Paris", countryHint: "france", countryCodeHint: "FR" }
+ */
+export function parseCountryFromQuery(query: string): {
+  baseQuery: string;
+  countryHint?: string;
+  countryCodeHint?: string;
+} {
+  const trimmed = query.trim();
+  const parts = trimmed.split(/\s+/);
+  if (parts.length <= 1) {
+    return { baseQuery: trimmed };
+  }
+
+  // Check if last two words match a country (e.g. "United States", "United Kingdom")
+  if (parts.length >= 3) {
+    const twoWords = parts.slice(-2).join(" ").toLowerCase();
+    if (COUNTRY_NAME_TO_CODE[twoWords]) {
+      return {
+        baseQuery: parts.slice(0, -2).join(" "),
+        countryHint: twoWords,
+        countryCodeHint: COUNTRY_NAME_TO_CODE[twoWords],
+      };
+    }
+  }
+
+  // Check if last word matches a country (e.g. "India", "Finland", "France", "Japan")
+  const lastWord = parts[parts.length - 1].toLowerCase();
+  if (COUNTRY_NAME_TO_CODE[lastWord]) {
+    return {
+      baseQuery: parts.slice(0, -1).join(" "),
+      countryHint: lastWord,
+      countryCodeHint: COUNTRY_NAME_TO_CODE[lastWord],
+    };
+  }
+
+  // Check if last word is a 2-letter uppercase ISO code
+  if (parts[parts.length - 1].length === 2 && /^[A-Z]{2}$/i.test(parts[parts.length - 1])) {
+    const code = parts[parts.length - 1].toUpperCase();
+    return {
+      baseQuery: parts.slice(0, -1).join(" "),
+      countryCodeHint: code,
+    };
+  }
+
+  return { baseQuery: trimmed };
+}
+
 // Lightweight in-memory cache
 interface CacheEntry {
   data: GeocodingSearchResult;
@@ -85,7 +168,8 @@ function saveToCache(key: string, data: GeocodingSearchResult): void {
 }
 
 /**
- * Searches for geographic locations matching the query using Open-Meteo Geocoding API.
+ * Searches for geographic locations matching the query using Open-Meteo Geocoding API,
+ * enhanced with country-awareness and a curated regional destinations fallback for major travel regions.
  */
 export async function searchLocations(
   params: GeocodingSearchParams
@@ -128,6 +212,10 @@ export async function searchLocations(
     );
   }
 
+  // Parse country hint from query text (e.g. "Kerala India" -> base "Kerala", countryHint "india")
+  const { baseQuery, countryHint, countryCodeHint } = parseCountryFromQuery(trimmedQuery);
+  const effectiveCountryCode = countryCode || countryCodeHint;
+
   // Check cache
   const cacheKey = buildCacheKey(trimmedQuery, count, language, countryCode);
   const cached = getFromCache(cacheKey);
@@ -135,22 +223,24 @@ export async function searchLocations(
     return cached;
   }
 
+  // Search Open-Meteo with base query (e.g. "Kerala") or trimmed query
   const baseUrl = process.env.OPENMETEO_GEOCODING_BASE_URL || DEFAULT_BASE_URL;
   const url = new URL("/v1/search", baseUrl);
-  url.searchParams.set("name", trimmedQuery);
-  url.searchParams.set("count", String(count));
+  url.searchParams.set("name", baseQuery || trimmedQuery);
+  url.searchParams.set("count", String(Math.max(count, 10)));
   url.searchParams.set("language", language);
   url.searchParams.set("format", "json");
-  if (countryCode) {
-    url.searchParams.set("country_code", countryCode);
+  if (effectiveCountryCode) {
+    url.searchParams.set("country_code", effectiveCountryCode);
   }
 
-  let response: Response;
+  let rawResults: RawOpenMeteoLocation[] = [];
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
-    response = await fetch(url.toString(), {
+    const response = await fetch(url.toString(), {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -159,56 +249,39 @@ export async function searchLocations(
     });
 
     clearTimeout(timeoutId);
-  } catch (err: unknown) {
-    if (err instanceof Error && err.name === "AbortError") {
-      throw new OpenMeteoGeocodingError(
-        "Open-Meteo geocoding request timed out.",
-        504,
-        "GEOCODING_TIMEOUT"
-      );
-    }
-    throw new OpenMeteoGeocodingError(
-      "Unable to connect to Open-Meteo geocoding service.",
-      503,
-      "NETWORK_ERROR"
-    );
-  }
 
-  if (!response.ok) {
-    if (response.status === 429) {
-      throw new OpenMeteoGeocodingError(
-        "Rate limit reached for geocoding service. Please wait and try again.",
-        429,
-        "RATE_LIMIT_EXCEEDED"
-      );
+    if (response.ok) {
+      const rawData = (await response.json()) as RawOpenMeteoResponse;
+      if (Array.isArray(rawData.results)) {
+        rawResults = rawData.results;
+      }
     }
-    if (response.status === 400) {
-      throw new OpenMeteoGeocodingError(
-        "Invalid geocoding request to Open-Meteo.",
-        400,
-        "BAD_REQUEST"
-      );
-    }
-    throw new OpenMeteoGeocodingError(
-      `Open-Meteo service returned an error (${response.status}).`,
-      502,
-      "PROVIDER_ERROR"
-    );
-  }
-
-  let rawData: RawOpenMeteoResponse;
-  try {
-    rawData = (await response.json()) as RawOpenMeteoResponse;
   } catch {
-    throw new OpenMeteoGeocodingError(
-      "Failed to parse geocoding response.",
-      502,
-      "INVALID_RESPONSE"
-    );
+    // If network fails, regional destination fallback below will still provide results if available
   }
 
-  const rawResults = Array.isArray(rawData.results) ? rawData.results : [];
+  // If baseQuery didn't return results and differed from trimmedQuery, try trimmedQuery as fallback
+  if (rawResults.length === 0 && baseQuery !== trimmedQuery) {
+    try {
+      const fallbackUrl = new URL("/v1/search", baseUrl);
+      fallbackUrl.searchParams.set("name", trimmedQuery);
+      fallbackUrl.searchParams.set("count", String(count));
+      fallbackUrl.searchParams.set("language", language);
+      fallbackUrl.searchParams.set("format", "json");
 
+      const res = await fetch(fallbackUrl.toString());
+      if (res.ok) {
+        const rawData = (await res.json()) as RawOpenMeteoResponse;
+        if (Array.isArray(rawData.results)) {
+          rawResults = rawData.results;
+        }
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  // Normalize Open-Meteo results
   const normalizedResults: GeocodingLocation[] = rawResults
     .filter(
       (item) =>
@@ -241,9 +314,53 @@ export async function searchLocations(
       return loc;
     });
 
+  // Query regional travel destinations registry (for major regions/states like Kerala, Goa, Bali, Hawaii)
+  const regionalMatches = findRegionalDestinations(baseQuery || trimmedQuery, countryHint || effectiveCountryCode);
+
+  // Combine results: include both regional destinations and provider results
+  const allLocations: GeocodingLocation[] = [...regionalMatches, ...normalizedResults];
+
+  // Disambiguation and Country-aware ranking:
+  // If the user specified a country hint (e.g. "India" or "Finland"), prioritize matching results at the top
+  if (countryHint || effectiveCountryCode) {
+    const hint = (countryHint || "").toLowerCase();
+    const code = (effectiveCountryCode || "").toUpperCase();
+
+    allLocations.sort((a, b) => {
+      const aMatches =
+        (a.countryCode && a.countryCode === code) ||
+        (a.country && a.country.toLowerCase().includes(hint)) ||
+        (a.admin1 && a.admin1.toLowerCase().includes(hint));
+
+      const bMatches =
+        (b.countryCode && b.countryCode === code) ||
+        (b.country && b.country.toLowerCase().includes(hint)) ||
+        (b.admin1 && b.admin1.toLowerCase().includes(hint));
+
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+      return 0;
+    });
+  }
+
+  // Deduplicate entries while preserving distinct geographic locations
+  const seenKeys = new Set<string>();
+  const deduplicated: GeocodingLocation[] = [];
+
+  for (const loc of allLocations) {
+    // Unique key combines name, country, and admin division
+    const key = `${loc.name.toLowerCase()}:${(loc.country || "").toLowerCase()}:${(loc.admin1 || "").toLowerCase()}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      deduplicated.push(loc);
+    }
+  }
+
+  const finalResults = deduplicated.slice(0, count);
+
   const searchResult: GeocodingSearchResult = {
     query: trimmedQuery,
-    results: normalizedResults,
+    results: finalResults,
     provider: "open-meteo",
   };
 
@@ -252,3 +369,4 @@ export async function searchLocations(
 
   return searchResult;
 }
+

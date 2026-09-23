@@ -8,7 +8,7 @@ export interface RestaurantResultsProps {
   restaurants: RestaurantItem[];
   radiusMeters?: number;
   onExpandRadius?: () => void;
-  onViewDetails?: (restaurant: RestaurantItem) => void;
+  onViewDetails?: (restaurant: RestaurantItem, photoUrl?: string | null) => void;
   onGetDirections?: (restaurant: RestaurantItem) => void;
   className?: string;
 }

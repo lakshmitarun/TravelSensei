@@ -9,3 +9,6 @@ export type { RestaurantResultsProps } from "./RestaurantResults";
 
 export { default as RestaurantDetailModal } from "./RestaurantDetailModal";
 export type { RestaurantDetailModalProps } from "./RestaurantDetailModal";
+
+export { default as RestaurantPhoto, buildRestaurantPhotoQuery } from "./RestaurantPhoto";
+export type { RestaurantPhotoProps } from "./RestaurantPhoto";

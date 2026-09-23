@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Destination } from "@/lib/recommendations/types";
 import { TripItem } from "./TripCard";
 import ItineraryDay, { ItineraryItem } from "./ItineraryDay";
+import TripPhoto from "./TripPhoto";
 import { FlightSearchWidget, FlightResultsList } from "@/components/flights";
 import { FlightSearchRequest, FlightSearchResponseData } from "@/lib/flights/types";
 import { TrainSearchForm, TrainResultsList, TrainSearchFormValues } from "@/components/trains";
@@ -17,6 +18,7 @@ import { RouteMapContainer } from "@/components/maps";
 import { WeatherCard } from "@/components/weather";
 import { CurrencyConverter } from "@/components/currency";
 import { RestaurantSearch } from "@/components/restaurants";
+import { AttractionSearch } from "@/components/attractions";
 import { MapCoordinate, RouteProfile } from "@/lib/maps/types";
 import { GeocodingLocation } from "@/lib/geocoding/types";
 import { format, parseISO, addDays } from "date-fns";
@@ -86,15 +88,16 @@ export default function TripDetails({
     returnDateSuggestion = "";
   }
 
-  // Single active transportation state: "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | null (default null)
+  // Single active transportation state: "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | "attractions" | null (default null)
   // type ActiveTransport = "flights" | "trains" | null;
   // type ActiveTransport = "flights" | "trains" | "hotels" | null;
   // type ActiveTransport = "flights" | "trains" | "hotels" | "route" | null;
   // type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | null;
-  type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | null;
+  // type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | null;
+  type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | "attractions" | null;
   const [activeTransport, setActiveTransport] = useState<ActiveTransport>(null);
 
-  // Sync with URL hash for incoming deep linking (#trip-flights / #trip-trains / #trip-hotels / #trip-route / #trip-currency / #trip-restaurants)
+  // Sync with URL hash for incoming deep linking (#trip-flights / #trip-trains / #trip-hotels / #trip-route / #trip-currency / #trip-restaurants / #trip-attractions)
   // Consumes and removes the hash so the address bar stays clean without hash during normal usage.
   useEffect(() => {
     const handleHash = () => {
@@ -137,6 +140,13 @@ export default function TripDetails({
         }
       } else if (hash === "#trip-restaurants") {
         setActiveTransport("restaurants");
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        const el = document.getElementById("trip-transport");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } else if (hash === "#trip-attractions") {
+        setActiveTransport("attractions");
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
         const el = document.getElementById("trip-transport");
         if (el) {
@@ -560,6 +570,13 @@ export default function TripDetails({
 
       {/* 1. HERO TRIP HEADER CARD */}
       <div className="bg-gradient-to-br from-primary via-primary-container to-teal-800 text-white rounded-3xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
+        {/* Dynamic Pexels Destination Photo Background */}
+        <TripPhoto
+          type="destination"
+          destination={destName}
+          country={destLocation}
+        />
+
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
 
         <div className="relative z-10 flex flex-col gap-6">
@@ -641,6 +658,7 @@ export default function TripDetails({
         <div id="trip-route" className="absolute -top-24 pointer-events-none" aria-hidden="true" />
         <div id="trip-currency" className="absolute -top-24 pointer-events-none" aria-hidden="true" />
         <div id="trip-restaurants" className="absolute -top-24 pointer-events-none" aria-hidden="true" />
+        <div id="trip-attractions" className="absolute -top-24 pointer-events-none" aria-hidden="true" />
 
         {/* Full-width Transportation & Accommodation Selector Toolbar */}
         <div
@@ -754,6 +772,24 @@ export default function TripDetails({
           >
             <span className="material-symbols-outlined text-[16px] sm:text-[18px]">lunch_dining</span>
             <span>Nearby Restaurants</span>
+          </button>
+
+          <button
+            type="button"
+            id="btn-find-attractions"
+            aria-expanded={activeTransport === "attractions"}
+            aria-controls="attraction-search-panel"
+            onClick={() => {
+              setActiveTransport((prev) => (prev === "attractions" ? null : "attractions"));
+            }}
+            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
+              activeTransport === "attractions"
+                ? "bg-primary text-white shadow-md"
+                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">attractions</span>
+            <span>Nearby Attractions</span>
           </button>
         </div>
 
@@ -1143,30 +1179,57 @@ export default function TripDetails({
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          id="btn-calculate-route"
-                          disabled={!isCalculateRouteEnabled}
-                          onClick={handleCalculateRoute}
-                          className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-2 self-start sm:self-auto shrink-0 ${
-                            isCalculateRouteEnabled
-                              ? "bg-primary hover:bg-primary-container hover:shadow-md cursor-pointer"
-                              : "bg-surface-container-highest text-on-surface-variant/50 cursor-not-allowed opacity-60"
-                          }`}
-                          title={!isCalculateRouteEnabled ? "Select a valid origin from suggestions to calculate route" : undefined}
-                        >
-                          {isCalculatingRoute ? (
-                            <>
-                              <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                              <span>Calculating route...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="material-symbols-outlined text-[18px]">directions</span>
-                              <span>Calculate Route</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+                          {/* Get Directions (TravelSensei Route Preview) */}
+                          <button
+                            type="button"
+                            id="btn-calculate-route"
+                            disabled={!isCalculateRouteEnabled}
+                            onClick={handleCalculateRoute}
+                            className={`px-4 py-2.5 rounded-xl text-white text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 ${
+                              isCalculateRouteEnabled
+                                ? "bg-primary hover:bg-primary-container hover:shadow-md cursor-pointer"
+                                : "bg-surface-container-highest text-on-surface-variant/50 cursor-not-allowed opacity-60"
+                            }`}
+                            title={!isCalculateRouteEnabled ? "Select a valid origin from suggestions to preview route" : "Preview route in TravelSensei"}
+                            aria-label="Get Directions: Preview route in TravelSensei"
+                          >
+                            {isCalculatingRoute ? (
+                              <>
+                                <div className="w-3.5 h-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                                <span>Calculating route...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="material-symbols-outlined text-[17px]">directions</span>
+                                <span>Get Directions</span>
+                              </>
+                            )}
+                          </button>
+
+                          {/* Open in Google Maps (Actual Navigation with origin and destination coordinates, no GPS requested) */}
+                          <button
+                            type="button"
+                            id="btn-open-google-maps-planner"
+                            disabled={!isCalculateRouteEnabled}
+                            onClick={() => {
+                              if (!selectedLocation || destination?.latitude === undefined || destination?.longitude === undefined) return;
+                              const url = `https://www.google.com/maps/dir/?api=1&origin=${selectedLocation.latitude},${selectedLocation.longitude}&destination=${destination.latitude},${destination.longitude}&travelmode=driving`;
+                              window.open(url, "_blank", "noopener,noreferrer");
+                            }}
+                            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 border ${
+                              isCalculateRouteEnabled
+                                ? "bg-surface-container hover:bg-surface-container-high text-on-surface border-surface-container-high cursor-pointer shadow-xs"
+                                : "bg-surface-container-low text-on-surface-variant/40 border-surface-container-high/40 cursor-not-allowed opacity-50"
+                            }`}
+                            title={!isCalculateRouteEnabled ? "Select a valid origin to navigate in Google Maps" : "Navigate with Google Maps"}
+                            aria-label="Open in Google Maps: Navigate with Google Maps"
+                          >
+                            <span className="material-symbols-outlined text-[17px] text-primary">map</span>
+                            <span>Open in Google Maps</span>
+                            <span className="material-symbols-outlined text-[13px] opacity-60">open_in_new</span>
+                          </button>
+                        </div>
                       </div>
 
                       {routeError && (
@@ -1210,6 +1273,17 @@ export default function TripDetails({
             />
           </div>
         )}
+
+        {/* Nearby Attractions Panel */}
+        {activeTransport === "attractions" && (
+          <div id="attraction-search-panel-container" className="flex flex-col gap-6 animate-in fade-in duration-200">
+            <AttractionSearch
+              latitude={destination?.latitude}
+              longitude={destination?.longitude}
+              destinationName={destName}
+            />
+          </div>
+        )}
       </div>
 
       {/* 4. ITINERARY DAYS TIMELINE */}
@@ -1229,7 +1303,11 @@ export default function TripDetails({
         {sortedItineraries.length > 0 ? (
           <div className="flex flex-col gap-6">
             {sortedItineraries.map((itinerary) => (
-              <ItineraryDay key={itinerary.id || itinerary.day_number} itinerary={itinerary} />
+              <ItineraryDay
+                key={itinerary.id || itinerary.day_number}
+                itinerary={itinerary}
+                destinationName={destName}
+              />
             ))}
           </div>
         ) : (

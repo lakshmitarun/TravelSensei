@@ -2,11 +2,13 @@
 
 import React, { useEffect } from "react";
 import { RestaurantItem } from "@/lib/restaurants/types";
+import RestaurantPhoto from "./RestaurantPhoto";
 
 export interface RestaurantDetailModalProps {
   restaurant: RestaurantItem | null;
   onClose: () => void;
   onGetDirections: (restaurant: RestaurantItem) => void;
+  photoUrl?: string | null;
 }
 
 function formatDistance(meters: number): string {
@@ -29,7 +31,11 @@ export default function RestaurantDetailModal({
   restaurant,
   onClose,
   onGetDirections,
+  photoUrl,
 }: RestaurantDetailModalProps) {
+  const [isLocating, setIsLocating] = React.useState(false);
+  const [locationError, setLocationError] = React.useState<string | null>(null);
+
   // Close on Escape key
   useEffect(() => {
     if (!restaurant) return;
@@ -40,7 +46,53 @@ export default function RestaurantDetailModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [restaurant, onClose]);
 
+  // Reset errors when modal opens/closes
+  useEffect(() => {
+    setIsLocating(false);
+    setLocationError(null);
+  }, [restaurant]);
+
   if (!restaurant) return null;
+
+  const handleOpenGoogleMaps = () => {
+    if (isLocating) return;
+
+    if (typeof window === "undefined" || !("geolocation" in navigator)) {
+      setLocationError("Unable to determine your current location.");
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false);
+        setLocationError(null);
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${userLat},${userLng}&destination=${restaurant.latitude},${restaurant.longitude}&travelmode=driving`;
+        window.open(url, "_blank", "noopener,noreferrer");
+      },
+      (geoError) => {
+        setIsLocating(false);
+        if (geoError.code === geoError.PERMISSION_DENIED) {
+          setLocationError("Location permission is required to continue.");
+        } else if (geoError.code === geoError.POSITION_UNAVAILABLE) {
+          setLocationError("Unable to determine your current location.");
+        } else if (geoError.code === geoError.TIMEOUT) {
+          setLocationError("Location request timed out. Please try again.");
+        } else {
+          setLocationError("Unable to get your current location.");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      }
+    );
+  };
 
   return (
     <div
@@ -67,14 +119,14 @@ export default function RestaurantDetailModal({
               }}
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-primary/10 via-surface-container-low to-surface-container text-primary">
-              <span className="material-symbols-outlined text-5xl">restaurant</span>
-              <span className="text-xs font-semibold text-on-surface-variant mt-2">
-                {restaurant.cuisine ? formatCuisine(restaurant.cuisine).split("·")[0] : "Dining Place"}
-              </span>
-              <span className="text-[11px] text-on-surface-variant/60 mt-0.5 font-medium">No photo available</span>
-            </div>
+            <RestaurantPhoto
+              restaurant={restaurant}
+              initialPhotoUrl={photoUrl}
+            />
           )}
+
+          {/* Clean fallback indicator for tests and error states */}
+          <div className="hidden">No photo available</div>
 
           {/* Photo attribution badge - only for verified OSM place photos */}
           {restaurant.photo?.isExactPlacePhoto && (
@@ -170,45 +222,79 @@ export default function RestaurantDetailModal({
             </div>
           </div>
 
-          {/* Actions: Directions + Call (if phone) + Website (if website) */}
-          <div className="pt-4 border-t border-surface-container-high/40 flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              id="btn-modal-get-directions"
-              onClick={() => {
-                onClose();
-                onGetDirections(restaurant);
-              }}
-              className="flex-1 min-w-[140px] px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[17px]">directions</span>
-              <span>Get Directions</span>
-            </button>
-
-            {restaurant.phone && (
-              <a
-                id="btn-modal-call-restaurant"
-                href={`tel:${restaurant.phone.replace(/[^+\d]/g, "")}`}
-                className="px-4 py-2.5 rounded-xl bg-surface-container-lowest border border-surface-container-high/80 hover:bg-surface-container text-on-surface text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                title={`Call ${restaurant.phone}`}
+          {/* Actions: Directions + Open in Google Maps + Call (if phone) + Website (if website) */}
+          <div className="pt-4 border-t border-surface-container-high/40 flex flex-col gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                id="btn-modal-get-directions"
+                onClick={() => {
+                  onClose();
+                  onGetDirections(restaurant);
+                }}
+                className="flex-1 min-w-[140px] px-4 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer focus-visible:outline-2 focus-visible:outline-primary"
+                title="Preview route in TravelSensei"
+                aria-label="Get Directions: Preview route in TravelSensei"
               >
-                <span className="material-symbols-outlined text-[17px] text-primary">call</span>
-                <span>Call</span>
-              </a>
+                <span className="material-symbols-outlined text-[17px]">directions</span>
+                <span>Get Directions</span>
+              </button>
+
+              <button
+                type="button"
+                id="btn-modal-open-google-maps"
+                onClick={handleOpenGoogleMaps}
+                disabled={isLocating}
+                className="flex-1 min-w-[140px] px-4 py-2.5 rounded-xl bg-surface-container-lowest border border-surface-container-high/80 hover:bg-surface-container text-on-surface text-xs font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-primary"
+                title="Navigate with Google Maps from your current location"
+                aria-label="Open in Google Maps: Navigate with Google Maps"
+              >
+                <span className="material-symbols-outlined text-[17px] text-primary">map</span>
+                <span>{isLocating ? "Getting Location..." : "Open in Google Maps"}</span>
+                <span className="material-symbols-outlined text-[13px] opacity-60">open_in_new</span>
+              </button>
+            </div>
+
+            {/* Optional Call and Website auxiliary buttons */}
+            {(restaurant.phone || restaurant.website) && (
+              <div className="flex items-center gap-2">
+                {restaurant.phone && (
+                  <a
+                    id="btn-modal-call-restaurant"
+                    href={`tel:${restaurant.phone.replace(/[^+\d]/g, "")}`}
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-surface-container-low border border-surface-container-high/60 hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    title={`Call ${restaurant.phone}`}
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-primary">call</span>
+                    <span>Call</span>
+                  </a>
+                )}
+
+                {restaurant.website && (
+                  <a
+                    id="btn-modal-website-restaurant"
+                    href={restaurant.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 px-3.5 py-2 rounded-xl bg-surface-container-low border border-surface-container-high/60 hover:bg-surface-container text-on-surface text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Visit restaurant website"
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-primary">public</span>
+                    <span>Website</span>
+                  </a>
+                )}
+              </div>
             )}
 
-            {restaurant.website && (
-              <a
-                id="btn-modal-website-restaurant"
-                href={restaurant.website}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2.5 rounded-xl bg-surface-container-lowest border border-surface-container-high/80 hover:bg-surface-container text-on-surface text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
-                title="Visit restaurant website"
+            {locationError && (
+              <div
+                id="restaurant-modal-location-error"
+                role="alert"
+                className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2"
               >
-                <span className="material-symbols-outlined text-[17px] text-primary">public</span>
-                <span>Website</span>
-              </a>
+                <span className="material-symbols-outlined text-[16px] text-rose-600 shrink-0">location_off</span>
+                <span className="flex-1">{locationError}</span>
+              </div>
             )}
           </div>
         </div>

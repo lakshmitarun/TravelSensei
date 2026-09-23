@@ -108,30 +108,50 @@ export default function RouteMapContainer({
           </div>
         </div>
 
-        {/* Profile Selector Buttons (Driving, Cycling, Walking) */}
-        <div
-          id="route-profile-selector"
-          className="inline-flex p-1 rounded-2xl bg-surface-container-lowest border border-surface-container-high/70 gap-1.5 self-start sm:self-auto shadow-xs"
-        >
-          {PROFILES.map((p) => {
-            const isActive = profile === p.id;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                id={`btn-profile-${p.id}`}
-                onClick={() => setProfile(p.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                  isActive
-                    ? "bg-primary text-white shadow-xs"
-                    : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface"
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px]">{p.icon}</span>
-                <span>{p.label}</span>
-              </button>
-            );
-          })}
+        {/* Action Controls: Open in Google Maps & Mode Selector */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          {/* Open in Google Maps - Actual Navigation (uses known origin and destination coordinates, no GPS requested) */}
+          <button
+            type="button"
+            id="btn-open-google-maps-route"
+            onClick={() => {
+              const url = `https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&travelmode=driving`;
+              window.open(url, "_blank", "noopener,noreferrer");
+            }}
+            className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-surface-container-lowest hover:bg-surface-container text-on-surface border border-surface-container-high/70 transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs focus-visible:outline-2 focus-visible:outline-primary"
+            title="Open in Google Maps for turn-by-turn navigation"
+            aria-label="Open in Google Maps for actual navigation"
+          >
+            <span className="material-symbols-outlined text-[16px] text-primary">map</span>
+            <span>Open in Google Maps</span>
+            <span className="material-symbols-outlined text-[13px] opacity-60">open_in_new</span>
+          </button>
+
+          {/* Profile Selector Buttons (Driving, Cycling, Walking) */}
+          <div
+            id="route-profile-selector"
+            className="inline-flex p-1 rounded-2xl bg-surface-container-lowest border border-surface-container-high/70 gap-1.5 shadow-xs"
+          >
+            {PROFILES.map((p) => {
+              const isActive = profile === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  id={`btn-profile-${p.id}`}
+                  onClick={() => setProfile(p.id)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    isActive
+                      ? "bg-primary text-white shadow-xs"
+                      : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">{p.icon}</span>
+                  <span>{p.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
