@@ -17,12 +17,29 @@ export interface AttractionItem {
   categories: string[];
 }
 
+export type AttractionDestinationCategory =
+  | "nature"
+  | "beach"
+  | "mountain"
+  | "city"
+  | "historical"
+  | "religious"
+  | "cultural"
+  | "adventure"
+  | "mixed";
+
 export interface AttractionsQueryParams {
   latitude: number;
   longitude: number;
   radius?: number; // meters (min 100, max 25000, default 5000)
   limit?: number; // min 1, max 20, default 20
-  categories?: string[]; // optional override; defaults to ["tourism.attraction", "tourism.sights"]
+  categories?: string[]; // optional explicit category override
+  destinationType?: string;
+  destinationName?: string;
+  stateCountry?: string;
+  travelStyles?: string[] | string;
+  activities?: string[] | string;
+  description?: string;
 }
 
 export interface AttractionsResponseData {

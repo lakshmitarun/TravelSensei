@@ -9,6 +9,11 @@ export interface AttractionSearchProps {
   latitude?: number | null;
   longitude?: number | null;
   destinationName?: string;
+  stateCountry?: string;
+  destinationType?: string;
+  travelStyles?: string[] | string;
+  activities?: string[] | string;
+  description?: string;
   className?: string;
 }
 
@@ -32,6 +37,11 @@ export default function AttractionSearch({
   latitude,
   longitude,
   destinationName = "this destination",
+  stateCountry,
+  destinationType,
+  travelStyles,
+  activities,
+  description,
   className = "",
 }: AttractionSearchProps) {
   // Local state tracking
@@ -70,6 +80,31 @@ export default function AttractionSearch({
           radius: String(targetRadius),
           limit: String(DEFAULT_LIMIT),
         });
+
+        if (destinationName && destinationName !== "this destination") {
+          queryParams.set("destinationName", destinationName);
+        }
+        if (stateCountry) {
+          queryParams.set("stateCountry", stateCountry);
+        }
+        if (destinationType) {
+          queryParams.set("destinationType", destinationType);
+        }
+        if (travelStyles) {
+          queryParams.set(
+            "travelStyles",
+            Array.isArray(travelStyles) ? travelStyles.join(",") : travelStyles
+          );
+        }
+        if (activities) {
+          queryParams.set(
+            "activities",
+            Array.isArray(activities) ? activities.join(",") : activities
+          );
+        }
+        if (description) {
+          queryParams.set("description", description);
+        }
 
         // Call ONLY the TravelSensei internal backend route
         const res = await fetch(`/api/attractions?${queryParams.toString()}`, {
@@ -116,7 +151,19 @@ export default function AttractionSearch({
         setIsLoading(false);
       }
     },
-    [latitude, longitude, radius, hasCoordinates, isLoading]
+    [
+      latitude,
+      longitude,
+      radius,
+      hasCoordinates,
+      isLoading,
+      destinationName,
+      stateCountry,
+      destinationType,
+      travelStyles,
+      activities,
+      description,
+    ]
   );
 
   const handleExpandRadius = () => {

@@ -5,13 +5,18 @@
  * Reference: https://apidocs.geoapify.com/docs/places/
  */
 
-import {
+import type {
   AttractionItem,
   AttractionsQueryParams,
   AttractionsResponseData,
-  GeoapifyAttractionError,
   GeoapifyPlacesResponse,
 } from "./types";
+import { GeoapifyAttractionError } from "./types";
+import {
+  getAttractionSearchStrategy,
+  getCategoryGroupsForStrategy,
+  deduplicateAndRankAttractions,
+} from "./strategy";
 
 export const PRIMARY_GEOAPIFY_URL = "https://api.geoapify.com";
 export const DEFAULT_TIMEOUT_MS = 8000;
@@ -48,11 +53,12 @@ export function buildAttractionsCacheKey(
   lat: number,
   lng: number,
   radius: number,
-  limit: number
+  limit: number,
+  contextKey: string = ""
 ): string {
   const roundLat = Number(lat.toFixed(3));
   const roundLng = Number(lng.toFixed(3));
-  return `${roundLat}:${roundLng}:${radius}:${limit}`;
+  return `${roundLat}:${roundLng}:${radius}:${limit}${contextKey ? `:${contextKey}` : ""}`;
 }
 
 export function getFromCache(key: string): AttractionsResponseData | null {
@@ -298,62 +304,37 @@ export function normalizeGeoapifyResponse(
 }
 
 /**
- * Fetches nearby attractions using Geoapify Places API v2.
- * Includes in-memory caching, request timeout, and normalized responses.
+ * Helper to fetch a single Geoapify Places category request.
  */
-export async function getNearbyAttractions(
-  params: AttractionsQueryParams
-): Promise<AttractionsResponseData> {
-  const { latitude, longitude } = params;
-  const radius = params.radius ?? DEFAULT_RADIUS_METERS;
-  const limit = params.limit ?? DEFAULT_LIMIT;
-
-  const { apiKey, baseUrl } = getGeoapifyConfig();
-
-  // 1. Check in-memory cache
-  const cacheKey = buildAttractionsCacheKey(latitude, longitude, radius, limit);
-  const cachedData = getFromCache(cacheKey);
-  if (cachedData) {
-    return cachedData;
+async function fetchGeoapifyPlacesRaw(
+  baseUrl: string,
+  apiKey: string,
+  params: {
+    latitude: number;
+    longitude: number;
+    radius: number;
+    limit: number;
+    categories: string[];
+    signal: AbortSignal;
   }
-
-  // 2. Build request URL
+): Promise<GeoapifyPlacesResponse> {
   const requestUrl = buildGeoapifyPlacesUrl(baseUrl, {
-    latitude,
-    longitude,
-    radius,
-    limit,
+    latitude: params.latitude,
+    longitude: params.longitude,
+    radius: params.radius,
+    limit: params.limit,
     categories: params.categories,
     apiKey,
   });
 
-  // 3. Execute fetch with AbortController timeout
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const response = await fetch(requestUrl, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+    signal: params.signal,
+  });
 
-  let response: Response;
-  try {
-    response = await fetch(requestUrl, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-      signal: controller.signal,
-    });
-  } catch (fetchError: unknown) {
-    clearTimeout(timeoutId);
-    if (
-      fetchError instanceof Error &&
-      (fetchError.name === "AbortError" || fetchError.message.includes("aborted"))
-    ) {
-      throw mapGeoapifyError(504);
-    }
-    throw mapGeoapifyError(502);
-  } finally {
-    clearTimeout(timeoutId);
-  }
-
-  // 4. Handle provider error statuses
   if (!response.ok) {
     let rawErrorData: unknown;
     try {
@@ -367,14 +348,11 @@ export async function getNearbyAttractions(
     } catch {
       // Ignore body read errors
     }
-
     throw mapGeoapifyError(response.status, rawErrorData);
   }
 
-  // 5. Parse response body safely
-  let rawResponse: GeoapifyPlacesResponse;
   try {
-    rawResponse = (await response.json()) as GeoapifyPlacesResponse;
+    return (await response.json()) as GeoapifyPlacesResponse;
   } catch {
     throw new GeoapifyAttractionError(
       502,
@@ -382,10 +360,123 @@ export async function getNearbyAttractions(
       "INVALID_PROVIDER_RESPONSE"
     );
   }
+}
 
-  // 6. Normalize and cache response
-  const normalizedData = normalizeGeoapifyResponse(rawResponse, radius);
-  saveToCache(cacheKey, normalizedData);
+/**
+ * Fetches nearby attractions using Geoapify Places API v2.
+ * Supports destination-aware category strategies, multi-group parallel fetching,
+ * diversity-aware ranking, in-memory caching, request timeout, and normalized responses.
+ */
+export async function getNearbyAttractions(
+  params: AttractionsQueryParams
+): Promise<AttractionsResponseData> {
+  const { latitude, longitude } = params;
+  const radius = params.radius ?? DEFAULT_RADIUS_METERS;
+  const limit = params.limit ?? DEFAULT_LIMIT;
 
-  return normalizedData;
+  const { apiKey, baseUrl } = getGeoapifyConfig();
+
+  // Determine strategy & category groups
+  const isExplicitCategories =
+    Array.isArray(params.categories) && params.categories.length > 0;
+  const strategy = isExplicitCategories
+    ? "custom"
+    : getAttractionSearchStrategy(params.destinationName, params.stateCountry, {
+        destinationType: params.destinationType,
+        travelStyles: params.travelStyles,
+        activities: params.activities,
+        description: params.description,
+      });
+
+  const contextKey = isExplicitCategories
+    ? (params.categories || []).join(",")
+    : `${strategy}:${params.destinationName || ""}`;
+
+  // 1. Check in-memory cache
+  const cacheKey = buildAttractionsCacheKey(latitude, longitude, radius, limit, contextKey);
+  const cachedData = getFromCache(cacheKey);
+  if (cachedData) {
+    return cachedData;
+  }
+
+  // 2. Prepare Category Groups
+  const categoryGroups: string[][] = isExplicitCategories
+    ? [params.categories!]
+    : getCategoryGroupsForStrategy(strategy as any);
+
+  // 3. Execute fetches with AbortController timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+
+  try {
+    const fetchPromises = categoryGroups.map(async (catGroup) => {
+      try {
+        const raw = await fetchGeoapifyPlacesRaw(baseUrl, apiKey, {
+          latitude,
+          longitude,
+          radius,
+          limit: Math.max(8, Math.min(15, limit)),
+          categories: catGroup,
+          signal: controller.signal,
+        });
+        const normalized = normalizeGeoapifyResponse(raw, radius);
+        return { success: true, attractions: normalized.attractions, error: null };
+      } catch (err) {
+        return { success: false, attractions: [] as AttractionItem[], error: err };
+      }
+    });
+
+    const results = await Promise.all(fetchPromises);
+    clearTimeout(timeoutId);
+
+    const successfulGroups = results
+      .filter((r) => r.success && r.attractions.length > 0)
+      .map((r) => r.attractions);
+
+    // If all requests failed, propagate the first captured provider error
+    if (successfulGroups.length === 0) {
+      const firstErrorResult = results.find((r) => !r.success && r.error);
+      if (firstErrorResult?.error) {
+        throw firstErrorResult.error;
+      }
+      // If none errored but 0 results across all categories
+      const emptyData: AttractionsResponseData = {
+        attractions: [],
+        count: 0,
+        radiusMeters: radius,
+        provider: "geoapify",
+      };
+      saveToCache(cacheKey, emptyData);
+      return emptyData;
+    }
+
+    // 4. Merge, deduplicate, and diversity-rank results
+    const rankedAttractions = isExplicitCategories
+      ? successfulGroups[0].slice(0, limit)
+      : deduplicateAndRankAttractions(successfulGroups, strategy as any, limit);
+
+    const normalizedData: AttractionsResponseData = {
+      attractions: rankedAttractions,
+      count: rankedAttractions.length,
+      radiusMeters: radius,
+      provider: "geoapify",
+    };
+
+    saveToCache(cacheKey, normalizedData);
+    return normalizedData;
+  } catch (err: unknown) {
+    clearTimeout(timeoutId);
+    if (err instanceof GeoapifyAttractionError) {
+      throw err;
+    }
+    if (
+      err instanceof Error &&
+      (err.name === "AbortError" || err.message.includes("aborted"))
+    ) {
+      throw mapGeoapifyError(504);
+    }
+    throw mapGeoapifyError(502);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

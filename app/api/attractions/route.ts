@@ -140,11 +140,30 @@ export async function GET(request: Request) {
       );
     }
 
+    // Optional destination context parameters for destination-aware diversity
+    const destinationType = searchParams.get("destinationType")?.trim() || undefined;
+    const destinationName = searchParams.get("destinationName")?.trim() || undefined;
+    const stateCountry = searchParams.get("stateCountry")?.trim() || undefined;
+    const travelStyles = searchParams.get("travelStyles")?.trim() || undefined;
+    const activities = searchParams.get("activities")?.trim() || undefined;
+    const description = searchParams.get("description")?.trim() || undefined;
+    const categoriesParam = searchParams.get("categories")?.trim();
+    const categories = categoriesParam
+      ? categoriesParam.split(",").map((c) => c.trim()).filter(Boolean)
+      : undefined;
+
     const attractionsData = await getNearbyAttractions({
       latitude: latRes.val!,
       longitude: lngRes.val!,
       radius: radiusRes.val,
       limit: limitRes.val,
+      categories,
+      destinationType,
+      destinationName,
+      stateCountry,
+      travelStyles,
+      activities,
+      description,
     });
 
     return NextResponse.json({

@@ -19,6 +19,7 @@ import { WeatherCard } from "@/components/weather";
 import { CurrencyConverter } from "@/components/currency";
 import { RestaurantSearch } from "@/components/restaurants";
 import { AttractionSearch } from "@/components/attractions";
+import { EventSearch } from "@/components/events";
 import { MapCoordinate, RouteProfile } from "@/lib/maps/types";
 import { GeocodingLocation } from "@/lib/geocoding/types";
 import { format, parseISO, addDays } from "date-fns";
@@ -88,16 +89,11 @@ export default function TripDetails({
     returnDateSuggestion = "";
   }
 
-  // Single active transportation state: "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | "attractions" | null (default null)
-  // type ActiveTransport = "flights" | "trains" | null;
-  // type ActiveTransport = "flights" | "trains" | "hotels" | null;
-  // type ActiveTransport = "flights" | "trains" | "hotels" | "route" | null;
-  // type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | null;
-  // type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | null;
-  type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | "attractions" | null;
+  // Single active transportation state: "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | "attractions" | "events" | null (default null)
+  type ActiveTransport = "flights" | "trains" | "hotels" | "route" | "currency" | "restaurants" | "attractions" | "events" | null;
   const [activeTransport, setActiveTransport] = useState<ActiveTransport>(null);
 
-  // Sync with URL hash for incoming deep linking (#trip-flights / #trip-trains / #trip-hotels / #trip-route / #trip-currency / #trip-restaurants / #trip-attractions)
+  // Sync with URL hash for incoming deep linking (#trip-flights / #trip-trains / #trip-hotels / #trip-route / #trip-currency / #trip-restaurants / #trip-attractions / #trip-events)
   // Consumes and removes the hash so the address bar stays clean without hash during normal usage.
   useEffect(() => {
     const handleHash = () => {
@@ -147,6 +143,13 @@ export default function TripDetails({
         }
       } else if (hash === "#trip-attractions") {
         setActiveTransport("attractions");
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        const el = document.getElementById("trip-transport");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      } else if (hash === "#trip-events") {
+        setActiveTransport("events");
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
         const el = document.getElementById("trip-transport");
         if (el) {
@@ -575,6 +578,10 @@ export default function TripDetails({
           type="destination"
           destination={destName}
           country={destLocation}
+          destinationType={destination?.destination_type || undefined}
+          travelStyles={destination?.travel_styles || undefined}
+          activities={destination?.activities || undefined}
+          description={destination?.description || undefined}
         />
 
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-64 h-64 rounded-full bg-white/10 blur-3xl pointer-events-none"></div>
@@ -663,134 +670,154 @@ export default function TripDetails({
         {/* Full-width Transportation & Accommodation Selector Toolbar */}
         <div
           id="trip-transport-selector"
-          className="w-full p-1.5 sm:p-2 bg-surface-container-low rounded-2xl sm:rounded-3xl border border-surface-container-high/60 shadow-xs flex flex-wrap lg:flex-nowrap items-center gap-1.5 sm:gap-2 h-auto min-h-0 whitespace-nowrap"
+          className="w-full p-1.5 bg-surface-container-low rounded-xl sm:rounded-2xl border border-surface-container-high/60 shadow-xs"
           aria-label="Travel & Stay selector"
         >
-          <button
-            type="button"
-            id="btn-find-flights"
-            aria-expanded={activeTransport === "flights"}
-            aria-controls="flight-search-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "flights" ? null : "flights"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "flights"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">flight</span>
-            <span>Find Flights</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 w-full">
+            <button
+              type="button"
+              id="btn-find-flights"
+              aria-expanded={activeTransport === "flights"}
+              aria-controls="flight-search-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "flights" ? null : "flights"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "flights"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">flight</span>
+              <span className="leading-none whitespace-nowrap">Find Flights</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-find-trains"
-            aria-expanded={activeTransport === "trains"}
-            aria-controls="train-search-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "trains" ? null : "trains"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "trains"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">train</span>
-            <span>Find Trains</span>
-          </button>
+            <button
+              type="button"
+              id="btn-find-trains"
+              aria-expanded={activeTransport === "trains"}
+              aria-controls="train-search-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "trains" ? null : "trains"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "trains"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">train</span>
+              <span className="leading-none whitespace-nowrap">Find Trains</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-find-hotels"
-            aria-expanded={activeTransport === "hotels"}
-            aria-controls="hotel-search-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "hotels" ? null : "hotels"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "hotels"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">hotel</span>
-            <span>Find Hotels</span>
-          </button>
+            <button
+              type="button"
+              id="btn-find-hotels"
+              aria-expanded={activeTransport === "hotels"}
+              aria-controls="hotel-search-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "hotels" ? null : "hotels"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "hotels"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">hotel</span>
+              <span className="leading-none whitespace-nowrap">Find Hotels</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-find-route"
-            aria-expanded={activeTransport === "route"}
-            aria-controls="route-planner-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "route" ? null : "route"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "route"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">explore</span>
-            <span>Route Planner</span>
-          </button>
+            <button
+              type="button"
+              id="btn-find-route"
+              aria-expanded={activeTransport === "route"}
+              aria-controls="route-planner-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "route" ? null : "route"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "route"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">explore</span>
+              <span className="leading-none whitespace-nowrap">Route Planner</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-find-currency"
-            aria-expanded={activeTransport === "currency"}
-            aria-controls="currency-converter-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "currency" ? null : "currency"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "currency"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">currency_exchange</span>
-            <span>Currency Converter</span>
-          </button>
+            <button
+              type="button"
+              id="btn-find-currency"
+              aria-expanded={activeTransport === "currency"}
+              aria-controls="currency-converter-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "currency" ? null : "currency"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "currency"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">currency_exchange</span>
+              <span className="leading-none whitespace-nowrap">Currency Converter</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-find-restaurants"
-            aria-expanded={activeTransport === "restaurants"}
-            aria-controls="restaurant-search-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "restaurants" ? null : "restaurants"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "restaurants"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">lunch_dining</span>
-            <span>Nearby Restaurants</span>
-          </button>
+            <button
+              type="button"
+              id="btn-find-restaurants"
+              aria-expanded={activeTransport === "restaurants"}
+              aria-controls="restaurant-search-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "restaurants" ? null : "restaurants"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "restaurants"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">lunch_dining</span>
+              <span className="leading-none whitespace-nowrap">Nearby Restaurants</span>
+            </button>
 
-          <button
-            type="button"
-            id="btn-find-attractions"
-            aria-expanded={activeTransport === "attractions"}
-            aria-controls="attraction-search-panel"
-            onClick={() => {
-              setActiveTransport((prev) => (prev === "attractions" ? null : "attractions"));
-            }}
-            className={`flex-1 min-w-[120px] lg:min-w-0 px-2.5 sm:px-3 lg:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-              activeTransport === "attractions"
-                ? "bg-primary text-white shadow-md"
-                : "hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/40"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">attractions</span>
-            <span>Nearby Attractions</span>
-          </button>
+            <button
+              type="button"
+              id="btn-find-attractions"
+              aria-expanded={activeTransport === "attractions"}
+              aria-controls="attraction-search-panel"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "attractions" ? null : "attractions"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "attractions"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">attractions</span>
+              <span className="leading-none whitespace-nowrap">Nearby Attractions</span>
+            </button>
+
+            <button
+              type="button"
+              id="btn-find-events"
+              aria-expanded={activeTransport === "events"}
+              aria-controls="event-search-panel-container"
+              onClick={() => {
+                setActiveTransport((prev) => (prev === "events" ? null : "events"));
+              }}
+              className={`flex items-center justify-center gap-1 px-2 sm:px-2.5 h-9 sm:h-[38px] rounded-lg sm:rounded-xl text-[12px] font-bold transition-all cursor-pointer whitespace-nowrap shadow-xs ${
+                activeTransport === "events"
+                  ? "bg-primary text-white shadow-md"
+                  : "bg-surface-container-lowest hover:bg-surface-container text-on-surface-variant hover:text-on-surface border border-surface-container-high/60"
+              }`}
+            >
+              <span className="material-symbols-outlined text-[17px] shrink-0 leading-none">confirmation_number</span>
+              <span className="leading-none whitespace-nowrap">Upcoming Events</span>
+            </button>
+          </div>
         </div>
 
         {/* Flight Search Panel */}
@@ -1281,6 +1308,24 @@ export default function TripDetails({
               latitude={destination?.latitude}
               longitude={destination?.longitude}
               destinationName={destName}
+              stateCountry={destLocation}
+              destinationType={destination?.destination_type || undefined}
+              travelStyles={destination?.travel_styles || undefined}
+              activities={destination?.activities || undefined}
+              description={destination?.description || undefined}
+            />
+          </div>
+        )}
+
+        {/* Upcoming Events Panel */}
+        {activeTransport === "events" && (
+          <div id="event-search-panel-container" className="flex flex-col gap-6 animate-in fade-in duration-200">
+            <EventSearch
+              destinationName={destName}
+              stateCountry={destLocation}
+              destination={destination}
+              itineraries={itineraries}
+              travelDate={trip.travel_date || undefined}
             />
           </div>
         )}

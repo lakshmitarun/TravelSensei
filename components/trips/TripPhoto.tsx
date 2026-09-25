@@ -2,10 +2,32 @@
 
 import React, { useState, useEffect, useRef } from "react";
 
+export type HeroCategory =
+  | "nature"
+  | "beach"
+  | "mountain"
+  | "city"
+  | "historical"
+  | "cultural"
+  | "religious"
+  | "adventure"
+  | "mixed";
+
+export interface DestinationHeroMetadata {
+  destinationType?: string | null;
+  travelStyles?: string[] | null;
+  activities?: string[] | null;
+  description?: string | null;
+}
+
 export interface TripPhotoProps {
   type: "destination" | "activity";
   destination: string;
   country?: string;
+  destinationType?: string;
+  travelStyles?: string[];
+  activities?: string[];
+  description?: string;
   activityTitle?: string;
   className?: string;
   onPhotoLoaded?: (photoUrl: string | null) => void;
@@ -21,7 +43,7 @@ const inFlightRequests = new Map<string, Promise<string | null>>();
  * Example: "Île-de-France, France" -> "France"
  * Example: "Tokyo, Japan" -> "Japan"
  */
-function extractCountry(locationStr?: string): string {
+export function extractCountry(locationStr?: string): string {
   if (!locationStr) return "";
   const parts = locationStr
     .split(",")
@@ -34,48 +56,254 @@ function extractCountry(locationStr?: string): string {
 }
 
 /**
- * Builds search query candidates for destination hero photos.
- * Uses destination travel identity and prioritized queries:
- * 1. "{destination} {country} cinematic travel scenery"
- * 2. "{destination} {country} beautiful scenic destination"
- * 3. "{destination} {country} iconic travel landscape"
- * 4. "{destination} {country} tourism scenery"
- * 5. "{destination} {country} famous destination"
- * 6. "{destination} {country} beautiful landscape"
- * 7. "{destination} {country} beautiful travel scenery"
- * 8. Fallbacks: "{destination} {country} travel", "{destination} {country}", "{destination} travel"
- *
- * Completely dynamic: never hardcodes any destination name or landmark mapping.
+ * Detects destination hero category based on destination name, location/country, and optional metadata.
+ * Completely dynamic: never hardcodes any destination name to a static image or category.
  */
-export function buildDestinationCandidateQueries(destination: string, countryOrLocation?: string): string[] {
+export function getDestinationHeroCategory(
+  destination: string,
+  countryOrLocation?: string,
+  metadata?: DestinationHeroMetadata
+): HeroCategory {
+  const destLower = (destination || "").toLowerCase().trim();
+  const locLower = (countryOrLocation || "").toLowerCase().trim();
+  const descLower = (metadata?.description || "").toLowerCase().trim();
+  const typeLower = (metadata?.destinationType || "").toLowerCase().trim();
+  const stylesLower = Array.isArray(metadata?.travelStyles)
+    ? metadata.travelStyles.join(" ").toLowerCase()
+    : "";
+  const activitiesLower = Array.isArray(metadata?.activities)
+    ? metadata.activities.join(" ").toLowerCase()
+    : "";
+
+  const combined = `${destLower} ${locLower} ${descLower} ${typeLower} ${stylesLower} ${activitiesLower}`;
+
+  // 1. Direct type matching if explicitly provided in destination metadata
+  if (typeLower) {
+    if (typeLower.includes("beach") || typeLower.includes("island") || typeLower.includes("coast")) return "beach";
+    if (typeLower.includes("mountain") || typeLower.includes("hill")) return "mountain";
+    if (typeLower.includes("nature") || typeLower.includes("wildlife") || typeLower.includes("ecotourism")) return "nature";
+    if (typeLower.includes("heritage") || typeLower.includes("historic") || typeLower.includes("palace") || typeLower.includes("fort")) return "historical";
+    if (typeLower.includes("spiritual") || typeLower.includes("religious")) return "religious";
+    if (typeLower.includes("cultural") || typeLower.includes("culture")) return "cultural";
+    if (typeLower.includes("city") || typeLower.includes("urban") || typeLower.includes("metropolis")) return "city";
+    if (typeLower.includes("adventure")) return "adventure";
+  }
+
+  // 2. Beach & Coastal detection (natural coastal indicators)
+  if (
+    /\b(beach|beaches|coast|coastline|coastal|seashore|island|islands|ocean|bay|cove|coral|reef|scuba|snorkeling|seaside|tropical coast|surf|lagoon)\b/.test(
+      combined
+    ) ||
+    /\b(goa|maldives|phuket|bali|bahamas|santorini|maui|cancun|boracay|havelock|andaman|pondicherry|varkala|kovalam|gokarna|krabi|mykonos|ibiza|miami|fiji|tahiti)\b/.test(
+      combined
+    )
+  ) {
+    return "beach";
+  }
+
+  // 3. Mountain & Alpine detection (altitude, terrain & topography indicators)
+  if (
+    /\b(mountain|mountains|alpine|alps|himalaya|himalayas|valley|valleys|peak|peaks|summit|ridge|hill station|snow|ski|trekking|hiking|highlands|canyon)\b/.test(
+      combined
+    ) ||
+    /\b(manali|shimla|ladakh|leh|zanskar|munnar|ooty|darjeeling|gangtok|rishikesh|zermatt|interlaken|aspen|banff|queenstown|fuji|patagonia|everest|matterhorn|chamonix)\b/.test(
+      combined
+    )
+  ) {
+    return "mountain";
+  }
+
+  // 4. Nature & Waterways detection (tropical waterways, backwaters, wetlands, forests)
+  if (
+    /\b(nature|backwater|backwaters|houseboat|houseboats|waterway|waterways|wetland|rainforest|jungle|wildlife|safari|national park|forest|eco|reserve|river|lake|flora|fauna|falls|waterfall)\b/.test(
+      combined
+    ) ||
+    /\b(kerala|alleppey|alappuzha|kumarakom|wayanad|thekkady|amazon|serengeti|masai mara|halong|pantanal|borneo|fjord|fjords|everglades|sunderbans|kaziranga|kabini)\b/.test(
+      combined
+    )
+  ) {
+    return "nature";
+  }
+
+  // 5. Historical & Heritage detection (Forts, palaces, ancient monuments, citadels)
+  if (
+    /\b(historical|heritage|history|fort|forts|palace|palaces|monument|monuments|ancient|ruins|castle|castles|dynasty|rajput|mughal|medieval|archaeological|citadel|fortress|antiquity)\b/.test(
+      combined
+    ) ||
+    /\b(jaipur|udaipur|jodhpur|jaisalmer|agra|hampi|khajuraho|fatehpur|ajanta|ellora|mysore|rome|athens|cairo|luxor|giza|petra|angkor|machu picchu|colosseum|pompeii|acropolis)\b/.test(
+      combined
+    )
+  ) {
+    return "historical";
+  }
+
+  // 6. Religious & Spiritual detection (Sacred sanctuaries, shrines, temples)
+  if (
+    /\b(spiritual|religious|temple|temples|shrine|shrines|pilgrimage|sacred|holy|monastery|cathedral|mosque|pagoda|abbey|basilica|sanctuary)\b/.test(
+      combined
+    ) ||
+    /\b(varanasi|rishikesh|haridwar|tirupati|amritsar|madurai|puri|ayodhya|shirdi|bodh gaya|kedarnath|badrinath|vatican|mecca|medina|jerusalem|lhasa)\b/.test(
+      combined
+    )
+  ) {
+    return "religious";
+  }
+
+  // 7. Major Cities & Metropolis detection (Skyline, architecture, urban landmarks)
+  if (
+    /\b(city|metropolis|urban|capital|skyline|cityscape|downtown|megacity|modern|tower|bridge|central|municipality|district)\b/.test(
+      combined
+    ) ||
+    /\b(hyderabad|paris|tokyo|london|new york|nyc|dubai|singapore|bangkok|mumbai|delhi|bengaluru|bangalore|kolkata|chennai|berlin|sydney|toronto|seoul|chicago|san francisco|los angeles|hong kong|shanghai|beijing|amsterdam|barcelona|madrid|vienna|prague|istanbul|kuala lumpur)\b/.test(
+      combined
+    )
+  ) {
+    return "city";
+  }
+
+  // 8. Cultural
+  if (/\b(cultural|culture|art|tradition|traditional|museum|theatre|opera|folklore|artisan|craft)\b/.test(combined)) {
+    return "cultural";
+  }
+
+  return "mixed";
+}
+
+/**
+ * Builds search query candidates for destination hero photos with a priority hierarchy according to detected category.
+ * Dynamically tailored queries:
+ * - Nature: backwaters houseboat, houseboat, backwaters, scenic waterways, tropical backwaters, scenic landscape
+ * - Beach: beach, coastline, ocean, beach sunset, tropical beach
+ * - Mountain: mountains, mountain landscape, valley, scenic viewpoint, alpine scenery
+ * - Historical: famous palace, famous fort, historical landmark, heritage architecture
+ * - City: iconic landmark, famous landmark, skyline, cityscape, iconic architecture
+ * - Religious: famous temple, historic shrine, religious landmark, sacred architecture
+ * - Cultural: cultural landmark, traditional architecture, famous cultural place
+ */
+export function buildDestinationCandidateQueries(
+  destination: string,
+  countryOrLocation?: string,
+  metadata?: DestinationHeroMetadata
+): string[] {
   const dest = (destination || "").trim();
   if (!dest) return [];
 
   const country = extractCountry(countryOrLocation);
   const suffix = country && !dest.toLowerCase().includes(country.toLowerCase()) ? ` ${country}` : "";
+  const category = getDestinationHeroCategory(dest, countryOrLocation, metadata);
 
-  const candidates: string[] = [
-    // 1. Cinematic travel scenery
-    `${dest}${suffix} cinematic travel scenery`.trim(),
-    // 2. Beautiful scenic destination
-    `${dest}${suffix} beautiful scenic destination`.trim(),
-    // 3. Iconic travel landscape
-    `${dest}${suffix} iconic travel landscape`.trim(),
-    // 4. Tourism scenery
-    `${dest}${suffix} tourism scenery`.trim(),
-    // 5. Famous destination
-    `${dest}${suffix} famous destination`.trim(),
-    // 6. Beautiful landscape
-    `${dest}${suffix} beautiful landscape`.trim(),
-    // 7. Beautiful travel scenery
-    `${dest}${suffix} beautiful travel scenery`.trim(),
-    // 8. General fallbacks
+  const categoryQueryMap: Record<HeroCategory, string[]> = {
+    nature: [
+      // Tier 1: Signature natural travel experiences & focal subjects
+      `${dest}${suffix} backwaters houseboat`.trim(),
+      `${dest}${suffix} houseboat`.trim(),
+      `${dest}${suffix} backwaters`.trim(),
+      `${dest}${suffix} scenic waterways`.trim(),
+      `${dest}${suffix} tropical backwaters`.trim(),
+      // Tier 2: Natural scenery & landscapes
+      `${dest}${suffix} scenic landscape`.trim(),
+      `${dest}${suffix} nature scenery`.trim(),
+      `${dest}${suffix} tropical scenery`.trim(),
+      `${dest}${suffix} scenic travel`.trim(),
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+      `${dest}${suffix} beautiful travel scenery`.trim(),
+    ],
+    beach: [
+      `${dest}${suffix} beach`.trim(),
+      `${dest}${suffix} coastline`.trim(),
+      `${dest}${suffix} ocean`.trim(),
+      `${dest}${suffix} beach sunset`.trim(),
+      `${dest}${suffix} tropical beach`.trim(),
+      `${dest}${suffix} coastal landscape`.trim(),
+      `${dest}${suffix} famous scenery`.trim(),
+      `${dest}${suffix} scenic landscape`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+      `${dest}${suffix} beautiful travel scenery`.trim(),
+    ],
+    mountain: [
+      `${dest}${suffix} mountains`.trim(),
+      `${dest}${suffix} mountain landscape`.trim(),
+      `${dest}${suffix} valley`.trim(),
+      `${dest}${suffix} scenic viewpoint`.trim(),
+      `${dest}${suffix} alpine scenery`.trim(),
+      `${dest}${suffix} travel scenery`.trim(),
+      `${dest}${suffix} scenic landscape`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+    ],
+    historical: [
+      `${dest}${suffix} famous palace`.trim(),
+      `${dest}${suffix} famous fort`.trim(),
+      `${dest}${suffix} historical landmark`.trim(),
+      `${dest}${suffix} heritage architecture`.trim(),
+      `${dest}${suffix} famous monument`.trim(),
+      `${dest}${suffix} historic architecture`.trim(),
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} iconic landmark`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+    ],
+    city: [
+      `${dest}${suffix} iconic landmark`.trim(),
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} skyline`.trim(),
+      `${dest}${suffix} cityscape`.trim(),
+      `${dest}${suffix} iconic architecture`.trim(),
+      `${dest}${suffix} famous scenery`.trim(),
+      `${dest}${suffix} cinematic travel scenery`.trim(),
+      `${dest}${suffix} scenic landscape`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+    ],
+    religious: [
+      `${dest}${suffix} famous temple`.trim(),
+      `${dest}${suffix} historic shrine`.trim(),
+      `${dest}${suffix} religious landmark`.trim(),
+      `${dest}${suffix} sacred architecture`.trim(),
+      `${dest}${suffix} heritage architecture`.trim(),
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+    ],
+    cultural: [
+      `${dest}${suffix} cultural landmark`.trim(),
+      `${dest}${suffix} traditional architecture`.trim(),
+      `${dest}${suffix} famous cultural place`.trim(),
+      `${dest}${suffix} heritage`.trim(),
+      `${dest}${suffix} iconic travel`.trim(),
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+    ],
+    adventure: [
+      `${dest}${suffix} scenic landscape`.trim(),
+      `${dest}${suffix} iconic travel`.trim(),
+      `${dest}${suffix} adventure scenery`.trim(),
+      `${dest}${suffix} famous viewpoint`.trim(),
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+    ],
+    mixed: [
+      `${dest}${suffix} famous landmark`.trim(),
+      `${dest}${suffix} iconic landmark`.trim(),
+      `${dest}${suffix} iconic travel`.trim(),
+      `${dest}${suffix} famous scenery`.trim(),
+      `${dest}${suffix} cinematic travel scenery`.trim(),
+      `${dest}${suffix} iconic scenic destination`.trim(),
+      `${dest}${suffix} cityscape`.trim(),
+      `${dest}${suffix} architecture`.trim(),
+      `${dest}${suffix} scenic landscape`.trim(),
+      `${dest}${suffix} beautiful scenic destination`.trim(),
+      `${dest}${suffix} beautiful travel scenery`.trim(),
+      `${dest}${suffix} travel scenery`.trim(),
+      `${dest}${suffix} tourism`.trim(),
+    ],
+  };
+
+  const specificQueries = categoryQueryMap[category] || categoryQueryMap.mixed;
+  const fallbacks = [
     `${dest}${suffix} travel`.trim(),
     `${dest}${suffix}`.trim(),
     `${dest} travel`.trim(),
   ];
 
-  return Array.from(new Set(candidates)).filter(Boolean);
+  return Array.from(new Set([...specificQueries, ...fallbacks])).filter(Boolean);
 }
 
 /**
@@ -157,174 +385,332 @@ export function hexColorStats(hex?: string): ColorStats | null {
 }
 
 /**
- * Scores a photo candidate to determine how well it represents the destination as a cinematic travel hero banner.
+ * Scores a photo candidate using category-aware evaluation and destination-defining subject rules.
  *
- * Factors evaluated:
- * - ASPECT RATIO & CROP SAFETY: Wide landscape (1.50–2.20) strongly preferred; portrait rejected.
- * - DESTINATION RELEVANCE: Destination name match in alt text / source URL.
- * - TRAVEL IDENTITY & FOCAL SUBJECTS: Iconic landmarks, backwaters, houseboats, temples, palaces, etc.
- * - VISUAL DEPTH & MULTI-ELEMENT COMPOSITION: Foreground + middleground + background, reflections, aerial views.
- * - SCENIC QUALITY: Natural greenery, water, mountains, palm trees, architecture.
- * - LIGHTING QUALITY: Golden hour, sunrise, sunset, warm daylight, clear daylight.
- * - COLOR RICHNESS & BALANCE: Rich saturated tones, warm highlights, lush greens, avoiding muddy/washed out.
- * - DEMOTIONS: Indoor/bedroom/office, generic residential/streets, empty sky/road, night, B&W, blurry.
- * - RESOLUTION: High resolution clarity bonus.
+ * Core rule:
+ * CATEGORY -> DESTINATION-DEFINING EXPERIENCE -> STRONG FOCAL SUBJECT -> CINEMATIC COMPOSITION -> BEST IMAGE
  */
-export function scoreDestinationPhoto(photo: PhotoScoreCandidate, destination: string): number {
+export function scoreDestinationPhoto(
+  photo: PhotoScoreCandidate,
+  destination: string,
+  country?: string,
+  metadata?: DestinationHeroMetadata
+): number {
   if (photo.width < photo.height) {
-    return -100; // Completely unsuitable for wide horizontal hero banner
+    return -200; // Strictly disqualify portrait orientation for wide hero banner
   }
 
   let score = 0;
   const ratio = photo.width / photo.height;
 
-  // Aspect ratio suitability & crop safety: wide horizontal container (1.50 - 2.20 is ideal)
-  if (ratio >= 1.5 && ratio <= 2.2) {
-    score += 45; // Prime wide hero aspect ratio
-  } else if (ratio >= 1.35 && ratio < 1.5) {
+  // 1. Aspect Ratio Suitability & Crop Safety (Golden 1.45 - 2.20 for hero banner)
+  if (ratio >= 1.45 && ratio <= 2.2) {
+    score += 50; // Prime wide hero banner ratio (e.g. 16:9 or 3:2)
+  } else if (ratio >= 1.25 && ratio < 1.45) {
     score += 25; // Acceptable landscape
   } else if (ratio > 2.2 && ratio <= 2.6) {
-    score += 30; // Ultrawide / panoramic
+    score += 35; // Panoramic / Ultrawide
   } else {
     score += 5; // Near square
   }
 
   const text = `${photo.alt || ""} ${photo.sourceUrl || ""}`.toLowerCase();
-  const destLower = destination.toLowerCase().trim();
+  const destLower = (destination || "").toLowerCase().trim();
+  const countryLower = (country || "").toLowerCase().trim();
 
-  // Exact or word-level destination match in photo metadata
+  // 2. Destination & Country Relevance
   if (destLower && text.includes(destLower)) {
-    score += 35;
-  } else {
+    score += 40;
+  } else if (destLower) {
     const words = destLower.split(/[\s,]+/).filter((w) => w.length > 2);
     if (words.some((w) => text.includes(w))) {
-      score += 20;
+      score += 25;
     }
   }
 
-  // Strong travel identity & recognizable focal subjects
-  const primeIdentityKeywords = [
-    "backwaters", "houseboat", "waterway", "canal", "lagoon", "tropical",
-    "charminar", "eiffel", "hawa mahal", "jal mahal", "palace", "fort", "castle",
-    "monument", "heritage", "temple", "pagoda", "shrine", "tower", "skyline",
-    "cityscape", "panoramic", "coastline", "beach", "seashore", "bay", "harbor"
-  ];
-  let idMatches = 0;
-  for (const kw of primeIdentityKeywords) {
-    if (text.includes(kw)) {
-      score += 15;
-      idMatches++;
-      if (idMatches >= 3) break;
+  if (countryLower && text.includes(countryLower)) {
+    score += 15;
+  }
+
+  // 3. Category-Specific Destination-Defining Subject Scoring
+  const category = getDestinationHeroCategory(destination, country, metadata);
+
+  switch (category) {
+    case "nature": {
+      // Primary signature travel focal subjects for nature (houseboats, waterways, waterfalls, safaris)
+      const primaryNatureSubjects = [
+        "houseboat", "houseboats", "canoe", "cruising", "sailing", "boat", "waterway", "waterways",
+        "backwaters", "waterfall", "waterfalls", "river", "lake", "lagoon", "tea plantation", "safari"
+      ];
+      let primaryFound = 0;
+      for (const kw of primaryNatureSubjects) {
+        if (text.includes(kw)) {
+          score += 30; // Strong signature travel subject bonus
+          primaryFound++;
+          if (primaryFound >= 2) break;
+        }
+      }
+
+      // Supporting natural atmosphere & foliage
+      const supportingNatureElements = [
+        "tropical", "palm trees", "coconut trees", "greenery", "lush", "serene", "tranquil", "scenic", "nature"
+      ];
+      let supportFound = 0;
+      for (const kw of supportingNatureElements) {
+        if (text.includes(kw)) {
+          score += 10;
+          supportFound++;
+          if (supportFound >= 3) break;
+        }
+      }
+
+      // Multi-element travel synergy bonus: Boat/houseboat + backwaters/water + palm trees
+      if (
+        (text.includes("houseboat") || text.includes("boat") || text.includes("canoe")) &&
+        (text.includes("backwaters") || text.includes("waterway") || text.includes("water")) &&
+        (text.includes("palm") || text.includes("coconut") || text.includes("lush"))
+      ) {
+        score += 35; // Signature Kerala nature travel experience bonus!
+      }
+
+      // Demote generic residential houses, local roads, neighborhood scenes in nature
+      const natureDemotions = [
+        "houses", "residential", "neighborhood", "local road", "street", "building facade", "office", "concrete"
+      ];
+      for (const kw of natureDemotions) {
+        if (text.includes(kw) && !text.includes("houseboat")) {
+          score -= 35;
+        }
+      }
+      break;
+    }
+
+    case "city": {
+      const primaryCitySubjects = [
+        "charminar", "eiffel", "tower", "skytree", "skyline", "cityscape", "shibuya",
+        "rainbow bridge", "bridge", "monument", "historic", "architecture", "downtown"
+      ];
+      let matchCount = 0;
+      for (const kw of primaryCitySubjects) {
+        if (text.includes(kw)) {
+          score += 25;
+          matchCount++;
+          if (matchCount >= 3) break;
+        }
+      }
+
+      // Synergy: Landmark + skyline/cityscape
+      if (
+        (text.includes("tower") || text.includes("eiffel") || text.includes("charminar") || text.includes("monument") || text.includes("skytree")) &&
+        (text.includes("skyline") || text.includes("cityscape") || text.includes("aerial view") || text.includes("sunset"))
+      ) {
+        score += 30;
+      }
+
+      // Demote generic empty streets/traffic without iconic landmarks
+      if (text.includes("residential") || text.includes("empty road") || text.includes("traffic")) {
+        score -= 25;
+      }
+      break;
+    }
+
+    case "beach": {
+      const primaryBeachSubjects = [
+        "beach", "coastline", "coast", "ocean", "sea", "sand", "sandy", "waves",
+        "palm trees", "tropical", "shore", "bay", "cove", "sunset"
+      ];
+      let matchCount = 0;
+      for (const kw of primaryBeachSubjects) {
+        if (text.includes(kw)) {
+          score += 22;
+          matchCount++;
+          if (matchCount >= 3) break;
+        }
+      }
+
+      // Synergy: Beach + ocean/waves + sunset/palms
+      if (
+        (text.includes("beach") || text.includes("coastline")) &&
+        (text.includes("ocean") || text.includes("sea") || text.includes("waves")) &&
+        (text.includes("sunset") || text.includes("palm") || text.includes("serene"))
+      ) {
+        score += 30;
+      }
+      break;
+    }
+
+    case "historical": {
+      const primaryHistSubjects = [
+        "fort", "palace", "hawa mahal", "jal mahal", "city palace", "amber fort", "golconda",
+        "castle", "monument", "heritage", "ancient", "ruins", "rajput", "architecture",
+        "courtyard", "facade", "historic"
+      ];
+      let matchCount = 0;
+      for (const kw of primaryHistSubjects) {
+        if (text.includes(kw)) {
+          score += 25;
+          matchCount++;
+          if (matchCount >= 3) break;
+        }
+      }
+
+      // Synergy: Palace/Fort + architecture + hills/courtyard
+      if (
+        (text.includes("fort") || text.includes("palace") || text.includes("hawa mahal") || text.includes("monument")) &&
+        (text.includes("architecture") || text.includes("historic") || text.includes("heritage"))
+      ) {
+        score += 30;
+      }
+      break;
+    }
+
+    case "mountain": {
+      const primaryMountainSubjects = [
+        "mountain", "mountains", "peak", "peaks", "summit", "valley", "hills",
+        "snow", "alpine", "ridge", "viewpoint", "mist", "slopes", "scenic"
+      ];
+      let matchCount = 0;
+      for (const kw of primaryMountainSubjects) {
+        if (text.includes(kw)) {
+          score += 22;
+          matchCount++;
+          if (matchCount >= 3) break;
+        }
+      }
+      break;
+    }
+
+    case "religious": {
+      const primaryRelSubjects = [
+        "temple", "shrine", "pagoda", "cathedral", "basilica", "mosque", "minaret",
+        "sacred", "spiritual", "monastery", "sanctuary"
+      ];
+      let matchCount = 0;
+      for (const kw of primaryRelSubjects) {
+        if (text.includes(kw)) {
+          score += 25;
+          matchCount++;
+          if (matchCount >= 3) break;
+        }
+      }
+      break;
+    }
+
+    default: {
+      const generalKeywords = [
+        "landmark", "monument", "palace", "fort", "houseboat", "tower", "skyline",
+        "beach", "coastline", "mountains", "waterway", "architecture"
+      ];
+      for (const kw of generalKeywords) {
+        if (text.includes(kw)) {
+          score += 15;
+          break;
+        }
+      }
     }
   }
 
-  // Visual depth & multi-element composition cues (foreground/middleground/reflections)
+  // 4. Composition Depth Cues
   const depthKeywords = [
     "reflecting", "reflection", "reflect", "surrounded by", "overlooking",
-    "aerial view", "panoramic view", "wide view", "along the", "framed",
-    "cruising", "sailing", "navigating", "nestled", "winding"
+    "aerial view", "panoramic view", "panoramic", "wide view", "along the", "framed by",
+    "cruising", "sailing", "navigating", "nestled", "perched", "winding", "illuminated"
   ];
   for (const kw of depthKeywords) {
+    if (text.includes(kw)) {
+      score += 15;
+      break;
+    }
+  }
+
+  // 5. Lighting Quality
+  const goldenAtmosphere = [
+    "golden hour", "sunset", "sunrise", "dawn", "dusk", "twilight",
+    "sunlight", "sunny", "clear sky", "blue sky", "daytime", "vivid",
+    "vibrant", "colorful", "serene", "tranquil", "peaceful", "crystal clear"
+  ];
+  for (const kw of goldenAtmosphere) {
     if (text.includes(kw)) {
       score += 10;
       break;
     }
   }
 
-  // General travel scenery, natural beauty, and landmark keywords
-  const scenicKeywords = [
-    "scenery", "landscape", "scenic", "nature", "mountain", "lake", "river",
-    "sea", "ocean", "palm trees", "coconut trees", "greenery", "lush",
-    "tea plantation", "hills", "valley", "breathtaking", "stunning", "majestic",
-    "architecture", "landmark", "view", "travel", "tourism", "tourist"
-  ];
-  for (const kw of scenicKeywords) {
-    if (text.includes(kw)) {
-      score += 5;
-    }
-  }
-
-  // Attractive lighting / visual vibrancy cues
-  const lightingVibrant = [
-    "golden hour", "sunset", "sunrise", "sunlight", "sunny", "clear sky",
-    "blue sky", "daytime", "vivid", "vibrant", "colorful", "tranquil",
-    "peaceful", "serene", "crystal clear", "bright", "blooming"
-  ];
-  for (const kw of lightingVibrant) {
-    if (text.includes(kw)) {
-      score += 8;
-    }
-  }
-
-  // ── avg_color brightness, saturation, and warmth scoring ──
+  // 6. Color & Brightness Evaluation via avgColor
   const cStats = hexColorStats(photo.avgColor);
   if (cStats) {
-    // 1. Perceived brightness (BT.601 luma)
-    if (cStats.luma >= 100 && cStats.luma <= 190) {
-      score += 20; // Rich balanced daylight or warm golden hour
-    } else if (cStats.luma > 190 && cStats.luma <= 225) {
-      score += 15; // Bright daylight
-    } else if (cStats.luma >= 70 && cStats.luma < 100) {
-      score -= 10; // Dim / dull
-    } else if (cStats.luma < 70) {
-      score -= 30; // Very dark image penalty
+    if (cStats.luma >= 100 && cStats.luma <= 195) {
+      score += 25;
+    } else if (cStats.luma > 195 && cStats.luma <= 225) {
+      score += 15;
+    } else if (cStats.luma >= 65 && cStats.luma < 100) {
+      score -= 10;
+    } else if (cStats.luma < 65) {
+      score -= 35;
     } else if (cStats.luma > 225) {
-      score -= 15; // Overexposed / washed out penalty
+      score -= 20;
     }
 
-    // 2. Saturation & color richness spread
     if (cStats.spread >= 40) {
-      score += 20; // Highly rich vibrant colors
+      score += 20;
     } else if (cStats.spread >= 20) {
-      score += 10; // Balanced colors
-    } else if (cStats.spread < 10 && cStats.luma < 180) {
-      score -= 20; // Gray/dull/muddy image penalty
+      score += 10;
+    } else if (cStats.spread < 12 && cStats.luma < 180) {
+      score -= 25;
     }
 
-    // 3. Warm golden or rich tropical tones
     if (cStats.isWarm || cStats.isLush) {
       score += 10;
     }
   }
 
-  // Heavily penalize generic indoor, bedroom, office, close-up
+  // 7. High Resolution Bonus
+  if (photo.width >= 3840 && photo.height >= 2160) {
+    score += 20;
+  } else if (photo.width >= 1920 && photo.height >= 1080) {
+    score += 15;
+  } else if (photo.width >= 1200) {
+    score += 5;
+  }
+
+  // 8. Negative Demotions
   const demoteIndoor = [
     "bedroom", "office", "laptop", "meeting", "desk", "indoor", "interior",
-    "close up", "selfie", "kitchen", "bathroom", "apartment", "furniture"
+    "close up", "close-up", "selfie", "kitchen", "bathroom", "apartment", "furniture",
+    "hotel room", "bed", "couch", "living room", "table setting"
   ];
   for (const kw of demoteIndoor) {
     if (text.includes(kw)) {
-      score -= 40;
+      score -= 50;
     }
   }
 
-  // Penalize empty sky, empty road, gloomy, or generic residential
-  const demoteBoring = [
+  const demoteEmptyOrDull = [
     "empty sky", "dark sky", "cloudy sky", "gloomy", "overcast", "dull",
-    "empty road", "asphalt", "highway", "traffic", "parking", "sidewalk",
-    "residential", "apartment building", "distant view", "extreme edge"
+    "asphalt", "highway", "parking", "sidewalk", "construction", "wires"
   ];
-  for (const kw of demoteBoring) {
+  for (const kw of demoteEmptyOrDull) {
     if (text.includes(kw)) {
       score -= 25;
     }
   }
 
-  // Penalize night / nighttime photos
-  if (text.includes("at night") || text.includes("nighttime") || text.includes("night view") || text.includes("night sky")) {
-    score -= 20;
+  if (
+    text.includes("at night") ||
+    text.includes("nighttime") ||
+    text.includes("night view") ||
+    text.includes("night sky")
+  ) {
+    const isIlluminatedIcon = text.includes("illuminated") || text.includes("glowing") || text.includes("city lights");
+    score -= isIlluminatedIcon ? 10 : 25;
   }
 
-  // Penalize black and white
-  if (text.includes("black and white") || text.includes("monochrome") || text.includes("grayscale")) {
-    score -= 35;
-  }
-
-  // High resolution clarity bonus
-  if (photo.width >= 1920 && photo.height >= 1080) {
-    score += 15;
-  } else if (photo.width >= 1200) {
-    score += 5;
+  if (
+    text.includes("black and white") ||
+    text.includes("monochrome") ||
+    text.includes("grayscale")
+  ) {
+    score -= 40;
   }
 
   return score;
@@ -373,14 +759,19 @@ async function queryPhotoProxy(query: string, perPage: number = 10): Promise<Fet
 
 /**
  * Intelligently searches and selects the best representative hero photo for a destination.
- * Evaluates multiple prioritized candidate queries (cinematic travel scenery -> beautiful scenic destination -> iconic travel landscape -> tourism scenery -> famous destination).
- * Selects wide landscape photos featuring iconic landmarks or scenic travel imagery.
+ * Evaluates category-specific candidate queries, deduplicates candidates, scores them holistically,
+ * and selects the most visually compelling landscape travel hero image.
  */
-async function fetchDestinationHeroPhoto(destination: string, countryOrLocation?: string): Promise<string | null> {
+async function fetchDestinationHeroPhoto(
+  destination: string,
+  countryOrLocation?: string,
+  metadata?: DestinationHeroMetadata
+): Promise<string | null> {
   const dest = (destination || "").trim();
   if (!dest) return null;
 
-  const cacheKey = `dest:${dest.toLowerCase()}:${(countryOrLocation || "").toLowerCase().trim()}`;
+  const country = extractCountry(countryOrLocation);
+  const cacheKey = `dest:${dest.toLowerCase()}:${country.toLowerCase()}`;
 
   if (tripPhotoCache.has(cacheKey)) {
     return tripPhotoCache.get(cacheKey) ?? null;
@@ -392,34 +783,36 @@ async function fetchDestinationHeroPhoto(destination: string, countryOrLocation?
 
   const fetchPromise = (async () => {
     try {
-      const candidates = buildDestinationCandidateQueries(dest, countryOrLocation);
+      const candidates = buildDestinationCandidateQueries(dest, countryOrLocation, metadata);
       let fallbackPhotoUrl: string | null = null;
       let highestScore = -1;
 
-      // Evaluate top candidate queries to find the most attractive travel identity photo
+      // Evaluate top candidate queries to assemble a rich candidate pool
       const maxAttempts = Math.min(candidates.length, 5);
-      const allScoredPhotos: { photo: FetchedPhotoItem; score: number }[] = [];
+      const seenPhotoIds = new Set<number>();
+      const allScoredPhotos: { photo: FetchedPhotoItem; score: number; queryUsed: string }[] = [];
 
       for (let i = 0; i < maxAttempts; i++) {
         const candidateQuery = candidates[i];
         const photos = await queryPhotoProxy(candidateQuery, 10);
 
         if (photos.length > 0) {
-          // Strictly evaluate landscape candidates
+          // Strictly evaluate landscape candidates (reject portrait immediately)
           const landscapePhotos = photos.filter((p) => p.width >= p.height);
 
-          if (landscapePhotos.length > 0) {
-            for (const p of landscapePhotos) {
-              const sc = scoreDestinationPhoto(p, dest);
-              allScoredPhotos.push({ photo: p, score: sc });
+          for (const p of landscapePhotos) {
+            if (!seenPhotoIds.has(p.id)) {
+              seenPhotoIds.add(p.id);
+              const sc = scoreDestinationPhoto(p, dest, country, metadata);
+              allScoredPhotos.push({ photo: p, score: sc, queryUsed: candidateQuery });
             }
+          }
 
-            // If an outstanding cinematic travel photo (score >= 170) is found early, select it
-            const currentBest = [...allScoredPhotos].sort((a, b) => b.score - a.score)[0];
-            if (currentBest && currentBest.score >= 170) {
-              tripPhotoCache.set(cacheKey, currentBest.photo.imageUrl);
-              return currentBest.photo.imageUrl;
-            }
+          // If an exceptional photo (score >= 185) is found in the candidate pool, select immediately
+          const currentBest = [...allScoredPhotos].sort((a, b) => b.score - a.score)[0];
+          if (currentBest && currentBest.score >= 185) {
+            tripPhotoCache.set(cacheKey, currentBest.photo.imageUrl);
+            return currentBest.photo.imageUrl;
           }
         }
       }
@@ -447,8 +840,8 @@ async function fetchDestinationHeroPhoto(destination: string, countryOrLocation?
       }
 
       // Final fallback: standard destination travel query
-      const fallbackQuery = `${dest} travel`;
-      const fallbackPhotos = await queryPhotoProxy(fallbackQuery, 3);
+      const fallbackQuery = `${dest}${country ? ` ${country}` : ""} travel`;
+      const fallbackPhotos = await queryPhotoProxy(fallbackQuery, 5);
       const landscapeFallback = fallbackPhotos.find((p) => p.width >= p.height) || fallbackPhotos[0];
 
       if (landscapeFallback?.imageUrl) {
@@ -513,15 +906,20 @@ export default function TripPhoto({
   type,
   destination,
   country,
+  destinationType,
+  travelStyles,
+  activities,
+  description,
   activityTitle,
   className = "",
   onPhotoLoaded,
 }: TripPhotoProps) {
   const destQuery = destination.trim();
   const actQuery = buildActivityPhotoQuery(activityTitle || "Explore", destination);
+  const cleanCountry = extractCountry(country);
   const cacheKey =
     type === "destination"
-      ? `dest:${destQuery.toLowerCase()}:${(country || "").toLowerCase().trim()}`
+      ? `dest:${destQuery.toLowerCase()}:${cleanCountry.toLowerCase()}`
       : `act:${actQuery.toLowerCase().trim()}`;
 
   const cachedUrl = tripPhotoCache.get(cacheKey) ?? null;
@@ -558,7 +956,12 @@ export default function TripPhoto({
 
     const promise =
       type === "destination"
-        ? fetchDestinationHeroPhoto(destination, country)
+        ? fetchDestinationHeroPhoto(destination, country, {
+            destinationType,
+            travelStyles,
+            activities,
+            description,
+          })
         : fetchRepresentativeActivityPhoto(actQuery);
 
     promise.then((url) => {
@@ -567,7 +970,18 @@ export default function TripPhoto({
       setIsLoading(false);
       onPhotoLoaded?.(url);
     });
-  }, [type, destination, country, actQuery, cacheKey, onPhotoLoaded]);
+  }, [
+    type,
+    destination,
+    country,
+    destinationType,
+    travelStyles,
+    activities,
+    description,
+    actQuery,
+    cacheKey,
+    onPhotoLoaded,
+  ]);
 
   const altTitle = type === "destination" ? destination : (activityTitle || "Activity");
 
@@ -592,7 +1006,7 @@ export default function TripPhoto({
             onError={() => setImageError(true)}
             className="w-full h-full object-cover"
           />
-          {/* Light balanced overlay: photo colors remain vivid and bright, white text stays crisp */}
+          {/* Subtle balanced overlay: photo colors remain vivid and bright, white text stays crisp */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10" />
           <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-black/15 to-transparent" />
 
